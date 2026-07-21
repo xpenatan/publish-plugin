@@ -31,7 +31,7 @@ public abstract class UploadToCentralTask extends DefaultTask {
     public abstract RegularFileProperty getBundleFile();
 
     @Input
-    public abstract Property<String> getCentralPortalUrl();
+    public abstract Property<String> getReleaseRepositoryUrl();
 
     @Input
     public abstract Property<String> getDeploymentName();
@@ -56,12 +56,14 @@ public abstract class UploadToCentralTask extends DefaultTask {
 
     @Internal
     protected String getUsername() {
-        return System.getenv(getUsernameEnvironmentVariable().get());
+        String name = getUsernameEnvironmentVariable().getOrElse("");
+        return name.isBlank() ? null : System.getenv(name);
     }
 
     @Internal
     protected String getPassword() {
-        return System.getenv(getPasswordEnvironmentVariable().get());
+        String name = getPasswordEnvironmentVariable().getOrElse("");
+        return name.isBlank() ? null : System.getenv(name);
     }
 
     @TaskAction
@@ -71,15 +73,33 @@ public abstract class UploadToCentralTask extends DefaultTask {
             throw new GradleException("Release bundle is missing or unreadable: " + bundle);
         }
 
-        String username = requireEnvironmentVariable(getUsernameEnvironmentVariable().get());
-        String password = requireEnvironmentVariable(getPasswordEnvironmentVariable().get());
+        String releaseRepositoryUrl = requireConfigured(
+            getReleaseRepositoryUrl().getOrElse(""),
+            "easyPublishing.releaseRepositoryUrl"
+        );
+        String usernameVariable = requireConfigured(
+            getUsernameEnvironmentVariable().getOrElse(""),
+            "easyPublishing.usernameEnvironmentVariable"
+        );
+        String passwordVariable = requireConfigured(
+            getPasswordEnvironmentVariable().getOrElse(""),
+            "easyPublishing.passwordEnvironmentVariable"
+        );
+        String username = requireEnvironmentVariable(usernameVariable);
+        String password = requireEnvironmentVariable(passwordVariable);
         if (getRequireSigning().get()) {
-            requireEnvironmentVariable(getSigningKeyEnvironmentVariable().get());
-            requireEnvironmentVariable(getSigningPasswordEnvironmentVariable().get());
+            requireEnvironmentVariable(requireConfigured(
+                getSigningKeyEnvironmentVariable().getOrElse(""),
+                "easyPublishing.signingKeyEnvironmentVariable"
+            ));
+            requireEnvironmentVariable(requireConfigured(
+                getSigningPasswordEnvironmentVariable().getOrElse(""),
+                "easyPublishing.signingPasswordEnvironmentVariable"
+            ));
         }
 
         String publishingType = getAutomaticRelease().get() ? "AUTOMATIC" : "USER_MANAGED";
-        String baseUrl = getCentralPortalUrl().get().replaceAll("/+$", "");
+        String baseUrl = releaseRepositoryUrl.replaceAll("/+$", "");
         String endpoint = baseUrl + "/api/v1/publisher/upload?name="
             + URLEncoder.encode(getDeploymentName().get(), StandardCharsets.UTF_8)
             + "&publishingType=" + publishingType;
@@ -127,6 +147,13 @@ public abstract class UploadToCentralTask extends DefaultTask {
         String value = System.getenv(name);
         if (value == null || value.isBlank()) {
             throw new GradleException(name + " environment variable is not set");
+        }
+        return value;
+    }
+
+    private static String requireConfigured(String value, String propertyName) {
+        if (value == null || value.isBlank()) {
+            throw new GradleException(propertyName + " must be configured");
         }
         return value;
     }

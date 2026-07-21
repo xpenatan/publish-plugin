@@ -34,6 +34,13 @@ allprojects {
 easyPublishing {
     modules(":core", ":desktop")
 
+    snapshotRepositoryUrl.set("https://central.sonatype.com/repository/maven-snapshots/")
+    releaseRepositoryUrl.set("https://central.sonatype.com")
+    usernameEnvironmentVariable.set("CENTRAL_PORTAL_USERNAME")
+    passwordEnvironmentVariable.set("CENTRAL_PORTAL_PASSWORD")
+    signingKeyEnvironmentVariable.set("SIGNING_KEY")
+    signingPasswordEnvironmentVariable.set("SIGNING_PASSWORD")
+
     pomName.set("Example Library")
     pomDescription.set("An example Java library")
     projectUrl.set("https://github.com/example/example-library")
@@ -59,8 +66,11 @@ For a single-project build, omit `modules`; the root project is selected automat
 ./gradlew publishRelease   # Publish the release to the configured provider
 ```
 
-The default Maven Central workflow uses `CENTRAL_PORTAL_USERNAME`,
-`CENTRAL_PORTAL_PASSWORD`, `SIGNING_KEY`, and `SIGNING_PASSWORD` from the environment.
+EasyPublishing does not select Sonatype or any other provider by default. For Maven Central,
+configure `snapshotRepositoryUrl` and `releaseRepositoryUrl` explicitly, together with the names
+of the environment variables that contain the credentials and signing material. The example
+above reads `CENTRAL_PORTAL_USERNAME`, `CENTRAL_PORTAL_PASSWORD`, `SIGNING_KEY`, and
+`SIGNING_PASSWORD` from the environment.
 
 ## Other Maven Repositories
 
@@ -83,15 +93,20 @@ username/password, deploy-token, and personal-access-token Maven repositories. P
 local `file:` repositories do not require credentials. For an explicitly trusted plain-HTTP
 repository, also set `allowInsecureProtocol.set(true)`.
 
-When `releaseRepositoryUrl` is configured, `publishRelease` uploads the POM, JARs, Gradle
-metadata, signatures, and checksums directly through Gradle's Maven publisher. If it is not
-configured, `publishRelease` keeps the default Maven Central Portal ZIP workflow.
+`publishRelease` requires `releaseRepositoryUrl`. When it points to
+`https://central.sonatype.com`, EasyPublishing uses the Maven Central Portal ZIP workflow.
+Every other release URL is treated as a Maven-compatible repository and receives the POM,
+JARs, Gradle metadata, signatures, and checksums directly through Gradle's Maven publisher.
 `prepareRelease` always creates `build/staging-deploy.zip` without uploading anything.
+
+`publishSnapshot` requires `snapshotRepositoryUrl`. The local-only `prepareSnapshot` and
+`prepareRelease` tasks do not require a remote provider.
 
 The same settings can be supplied on the command line or in `gradle.properties`, which is
 especially useful for nested builds:
 
 ```properties
+easyPublishing.snapshotRepositoryUrl=https://packages.example.com/maven/snapshots
 easyPublishing.releaseRepositoryUrl=https://packages.example.com/maven/releases
 easyPublishing.usernameEnvironmentVariable=MAVEN_REPOSITORY_USERNAME
 easyPublishing.passwordEnvironmentVariable=MAVEN_REPOSITORY_TOKEN

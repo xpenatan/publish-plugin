@@ -39,26 +39,27 @@ public abstract class EasyPublishingExtension {
         getDeveloperName().convention("");
         getDeveloperEmail().convention("");
 
-        getSnapshotRepositoryUrl().convention("https://central.sonatype.com/repository/maven-snapshots/");
+        getSnapshotRepositoryUrl().convention(
+            project.getProviders().gradleProperty("easyPublishing.snapshotRepositoryUrl").orElse("")
+        );
         getReleaseRepositoryUrl().convention(
             project.getProviders().gradleProperty("easyPublishing.releaseRepositoryUrl").orElse("")
         );
-        getCentralPortalUrl().convention("https://central.sonatype.com");
         getUsernameEnvironmentVariable().convention(
             project.getProviders().gradleProperty("easyPublishing.usernameEnvironmentVariable")
-                .orElse("CENTRAL_PORTAL_USERNAME")
+                .orElse("")
         );
         getPasswordEnvironmentVariable().convention(
             project.getProviders().gradleProperty("easyPublishing.passwordEnvironmentVariable")
-                .orElse("CENTRAL_PORTAL_PASSWORD")
+                .orElse("")
         );
         getSigningKeyEnvironmentVariable().convention(
             project.getProviders().gradleProperty("easyPublishing.signingKeyEnvironmentVariable")
-                .orElse("SIGNING_KEY")
+                .orElse("")
         );
         getSigningPasswordEnvironmentVariable().convention(
             project.getProviders().gradleProperty("easyPublishing.signingPasswordEnvironmentVariable")
-                .orElse("SIGNING_PASSWORD")
+                .orElse("")
         );
         getAllowInsecureProtocol().convention(
             project.getProviders().gradleProperty("easyPublishing.allowInsecureProtocol")
@@ -121,12 +122,11 @@ public abstract class EasyPublishingExtension {
 
     public abstract Property<String> getDeveloperEmail();
 
+    /** Required by publishSnapshot. No repository provider is selected by default. */
     public abstract Property<String> getSnapshotRepositoryUrl();
 
-    /** Optional Maven repository used by publishRelease instead of the Central Portal. */
+    /** Required by publishRelease. Maven Central URLs use its Portal API; other URLs use Maven publishing. */
     public abstract Property<String> getReleaseRepositoryUrl();
-
-    public abstract Property<String> getCentralPortalUrl();
 
     public abstract Property<String> getUsernameEnvironmentVariable();
 

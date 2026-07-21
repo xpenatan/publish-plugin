@@ -21,6 +21,7 @@ import org.gradle.external.javadoc.StandardJavadocDocletOptions;
 import org.gradle.plugins.signing.SigningExtension;
 
 import java.io.File;
+import java.net.URI;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -38,6 +39,7 @@ public class EasyPublishingPlugin implements Plugin<Project> {
     private static final String RELEASE_REPOSITORY_NAME = "easyPublishingRelease";
     private static final String PUBLISH_TASK_SUFFIX = "ToEasyPublishingRepository";
     private static final String RELEASE_PUBLISH_TASK_SUFFIX = "ToEasyPublishingReleaseRepository";
+    private static final String SNAPSHOT_REPOSITORY_URL_PROPERTY = "easyPublishing.snapshotRepositoryUrl";
     private static final String RELEASE_REPOSITORY_URL_PROPERTY = "easyPublishing.releaseRepositoryUrl";
     private static final String USERNAME_ENVIRONMENT_PROPERTY =
         "easyPublishing.usernameEnvironmentVariable";
@@ -64,6 +66,12 @@ public class EasyPublishingPlugin implements Plugin<Project> {
 
         boolean releaseRequested = isReleaseRequested(project);
         boolean localSnapshotRequested = isAnyTaskRequested(project, "prepareSnapshot");
+        boolean publishSnapshotRequested = isAnyTaskRequested(project, "publishSnapshot");
+        boolean publishReleaseRequested = isAnyTaskRequested(
+            project,
+            "publishRelease",
+            "uploadReleaseToMavenCentral"
+        );
         project.getExtensions().getExtraProperties().set(RELEASE_REQUESTED_EXTRA, releaseRequested);
 
         EasyPublishingExtension extension = project.getExtensions().create(
@@ -139,7 +147,7 @@ public class EasyPublishingPlugin implements Plugin<Project> {
                 task.setDescription("Uploads the prepared release bundle to the Central Publisher Portal.");
                 task.dependsOn(prepareRelease);
                 task.getBundleFile().set(extension.getReleaseBundle());
-                task.getCentralPortalUrl().set(extension.getCentralPortalUrl());
+                task.getReleaseRepositoryUrl().set(extension.getReleaseRepositoryUrl());
                 task.getDeploymentName().set(extension.getDeploymentName());
                 task.getAutomaticRelease().set(extension.getAutomaticRelease());
                 task.getUsernameEnvironmentVariable().set(extension.getUsernameEnvironmentVariable());
@@ -157,13 +165,20 @@ public class EasyPublishingPlugin implements Plugin<Project> {
 
         project.afterEvaluate(ignored -> {
             configureReleaseArchive(prepareRelease, extension);
-            boolean directRelease = notBlank(extension.getReleaseRepositoryUrl().getOrElse(""));
+            String releaseRepositoryUrl = extension.getReleaseRepositoryUrl().getOrElse("");
+            boolean centralRelease = isCentralPortalUrl(releaseRepositoryUrl);
+            boolean directRelease = notBlank(releaseRepositoryUrl) && !centralRelease;
+            if (publishReleaseRequested && !notBlank(releaseRepositoryUrl)) {
+                throw new GradleException(
+                    "publishRelease requires easyPublishing.releaseRepositoryUrl"
+                );
+            }
             if (directRelease) {
                 publishRelease.configure(task -> task.setDescription(
                     "Publishes all release publications to the configured Maven repository."
                 ));
             }
-            else {
+            else if (centralRelease) {
                 publishRelease.configure(task -> {
                     task.setDescription("Prepares and uploads a release bundle to the Central Publisher Portal.");
                     task.dependsOn(uploadRelease);
@@ -180,6 +195,8 @@ public class EasyPublishingPlugin implements Plugin<Project> {
                         extension,
                         releaseRequested,
                         localSnapshotRequested,
+                        publishSnapshotRequested,
+                        directRelease,
                         validateSnapshot,
                         validateRelease
                     );
@@ -191,6 +208,8 @@ public class EasyPublishingPlugin implements Plugin<Project> {
                         extension,
                         releaseRequested,
                         localSnapshotRequested,
+                        publishSnapshotRequested,
+                        directRelease,
                         validateSnapshot,
                         validateRelease
                     ));
@@ -293,6 +312,8 @@ public class EasyPublishingPlugin implements Plugin<Project> {
         EasyPublishingExtension extension,
         boolean releaseRequested,
         boolean localSnapshotRequested,
+        boolean publishSnapshotRequested,
+        boolean directRelease,
         TaskProvider<ValidatePublicationsTask> validateSnapshot,
         TaskProvider<ValidatePublicationsTask> validateRelease
     ) {
@@ -329,11 +350,18 @@ public class EasyPublishingPlugin implements Plugin<Project> {
         else if (localSnapshotRequested) {
             repository.setUrl(extension.getSnapshotDirectory());
         }
+        else if (publishSnapshotRequested) {
+            String snapshotRepositoryUrl = requireConfigured(
+                extension.getSnapshotRepositoryUrl().getOrElse(""),
+                "publishSnapshot requires easyPublishing.snapshotRepositoryUrl"
+            );
+            configureRemoteRepository(repository, snapshotRepositoryUrl, extension);
+        }
         else {
-            configureRemoteRepository(repository, extension.getSnapshotRepositoryUrl().get(), extension);
+            repository.setUrl(extension.getSnapshotDirectory());
         }
 
-        if (releaseRequested && notBlank(extension.getReleaseRepositoryUrl().getOrElse(""))) {
+        if (releaseRequested && directRelease) {
             MavenArtifactRepository releaseRepository =
                 (MavenArtifactRepository) repositories.findByName(RELEASE_REPOSITORY_NAME);
             if (releaseRepository == null) {
@@ -404,8 +432,10 @@ public class EasyPublishingPlugin implements Plugin<Project> {
         PublishingExtension publishing,
         EasyPublishingExtension extension
     ) {
-        String key = System.getenv(extension.getSigningKeyEnvironmentVariable().get());
-        String password = System.getenv(extension.getSigningPasswordEnvironmentVariable().get());
+        String key = environmentVariable(extension.getSigningKeyEnvironmentVariable().getOrElse(""));
+        String password = environmentVariable(
+            extension.getSigningPasswordEnvironmentVariable().getOrElse("")
+        );
         if (notBlank(key) && notBlank(password)) {
             SigningExtension signing = project.getExtensions().getByType(SigningExtension.class);
             signing.useInMemoryPgpKeys(key, password);
@@ -421,8 +451,8 @@ public class EasyPublishingPlugin implements Plugin<Project> {
         repository.setUrl(url);
         repository.setAllowInsecureProtocol(extension.getAllowInsecureProtocol().get());
 
-        String username = System.getenv(extension.getUsernameEnvironmentVariable().get());
-        String password = System.getenv(extension.getPasswordEnvironmentVariable().get());
+        String username = environmentVariable(extension.getUsernameEnvironmentVariable().getOrElse(""));
+        String password = environmentVariable(extension.getPasswordEnvironmentVariable().getOrElse(""));
         if (notBlank(username) && notBlank(password)) {
             repository.credentials(credentials -> {
                 credentials.setUsername(username);
@@ -466,6 +496,9 @@ public class EasyPublishingPlugin implements Plugin<Project> {
                 nested.getPublishSnapshotTask().get(),
                 "Publishes snapshot artifacts from nested build '" + nested.getName() + "'."
             );
+            nestedPublishSnapshot.configure(task ->
+                configureNestedSnapshotProperties(task, extension)
+            );
             if (directRelease) {
                 TaskProvider<GradleBuild> nestedPublishRelease = nestedBuildTask(
                     root,
@@ -492,24 +525,50 @@ public class EasyPublishingPlugin implements Plugin<Project> {
         }
     }
 
+    private static void configureNestedSnapshotProperties(
+        GradleBuild task,
+        EasyPublishingExtension extension
+    ) {
+        var properties = new java.util.LinkedHashMap<>(task.getStartParameter().getProjectProperties());
+        properties.put(SNAPSHOT_REPOSITORY_URL_PROPERTY, extension.getSnapshotRepositoryUrl().getOrElse(""));
+        addNestedCredentialProperties(properties, extension);
+        task.getStartParameter().setProjectProperties(properties);
+    }
+
     private static void configureNestedReleaseProperties(
         GradleBuild task,
         EasyPublishingExtension extension
     ) {
         var properties = new java.util.LinkedHashMap<>(task.getStartParameter().getProjectProperties());
-        properties.put(RELEASE_REPOSITORY_URL_PROPERTY, extension.getReleaseRepositoryUrl().get());
-        properties.put(USERNAME_ENVIRONMENT_PROPERTY, extension.getUsernameEnvironmentVariable().get());
-        properties.put(PASSWORD_ENVIRONMENT_PROPERTY, extension.getPasswordEnvironmentVariable().get());
-        properties.put(SIGNING_KEY_ENVIRONMENT_PROPERTY, extension.getSigningKeyEnvironmentVariable().get());
+        properties.put(RELEASE_REPOSITORY_URL_PROPERTY, extension.getReleaseRepositoryUrl().getOrElse(""));
+        addNestedCredentialProperties(properties, extension);
+        task.getStartParameter().setProjectProperties(properties);
+    }
+
+    private static void addNestedCredentialProperties(
+        java.util.Map<String, String> properties,
+        EasyPublishingExtension extension
+    ) {
+        properties.put(
+            USERNAME_ENVIRONMENT_PROPERTY,
+            extension.getUsernameEnvironmentVariable().getOrElse("")
+        );
+        properties.put(
+            PASSWORD_ENVIRONMENT_PROPERTY,
+            extension.getPasswordEnvironmentVariable().getOrElse("")
+        );
+        properties.put(
+            SIGNING_KEY_ENVIRONMENT_PROPERTY,
+            extension.getSigningKeyEnvironmentVariable().getOrElse("")
+        );
         properties.put(
             SIGNING_PASSWORD_ENVIRONMENT_PROPERTY,
-            extension.getSigningPasswordEnvironmentVariable().get()
+            extension.getSigningPasswordEnvironmentVariable().getOrElse("")
         );
         properties.put(
             ALLOW_INSECURE_PROTOCOL_PROPERTY,
             extension.getAllowInsecureProtocol().get().toString()
         );
-        task.getStartParameter().setProjectProperties(properties);
     }
 
     private static TaskProvider<GradleBuild> nestedBuildTask(
@@ -599,6 +658,32 @@ public class EasyPublishingPlugin implements Plugin<Project> {
 
     private static boolean notBlank(String value) {
         return value != null && !value.isBlank();
+    }
+
+    private static boolean isCentralPortalUrl(String releaseRepositoryUrl) {
+        if (!notBlank(releaseRepositoryUrl)) {
+            return false;
+        }
+        try {
+            return "central.sonatype.com".equalsIgnoreCase(URI.create(releaseRepositoryUrl).getHost());
+        }
+        catch (IllegalArgumentException exception) {
+            throw new GradleException(
+                "Invalid easyPublishing.releaseRepositoryUrl: " + releaseRepositoryUrl,
+                exception
+            );
+        }
+    }
+
+    private static String requireConfigured(String value, String message) {
+        if (!notBlank(value)) {
+            throw new GradleException(message);
+        }
+        return value;
+    }
+
+    private static String environmentVariable(String name) {
+        return notBlank(name) ? System.getenv(name) : null;
     }
 
     private static void setIfNotBlank(org.gradle.api.provider.Property<String> property, String value) {

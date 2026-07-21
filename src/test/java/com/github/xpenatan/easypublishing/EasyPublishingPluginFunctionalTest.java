@@ -122,6 +122,49 @@ class EasyPublishingPluginFunctionalTest {
     }
 
     @Test
+    void publishesSnapshotToConfiguredMavenRepository() throws IOException {
+        writeProject("1.2.3-SNAPSHOT");
+        Files.writeString(
+            new File(projectDir, "build.gradle").toPath(),
+            """
+
+            easyPublishing {
+                snapshotRepositoryUrl = layout.projectDirectory.dir('remote-snapshots')
+                    .asFile.toURI().toString()
+            }
+            """,
+            java.nio.file.StandardOpenOption.APPEND
+        );
+
+        BuildResult result = runner("publishSnapshot").build();
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":publishSnapshot").getOutcome());
+        assertEquals(
+            TaskOutcome.SUCCESS,
+            result.task(":publishMavenPublicationToEasyPublishingRepository").getOutcome()
+        );
+        File artifactDirectory = new File(
+            projectDir,
+            "remote-snapshots/com/example/sample-lib/1.2.3-SNAPSHOT"
+        );
+        assertNotNull(findFile(artifactDirectory, name ->
+            name.endsWith(".jar") && !name.contains("-sources") && !name.contains("-javadoc")
+        ));
+        assertNotNull(findFile(artifactDirectory, name -> name.endsWith(".pom")));
+    }
+
+    @Test
+    void rejectsSnapshotPublishingWithoutRepository() throws IOException {
+        writeProject("1.2.3-SNAPSHOT");
+
+        BuildResult result = runner("publishSnapshot").buildAndFail();
+
+        assertTrue(result.getOutput().contains(
+            "publishSnapshot requires easyPublishing.snapshotRepositoryUrl"
+        ));
+    }
+
+    @Test
     void publishesReleaseToConfiguredMavenRepository() throws IOException {
         writeProject("1.2.3");
         Files.writeString(
@@ -158,8 +201,33 @@ class EasyPublishingPluginFunctionalTest {
     }
 
     @Test
-    void usesCentralPortalWhenReleaseRepositoryIsNotConfigured() throws IOException {
+    void rejectsReleasePublishingWithoutProvider() throws IOException {
         writeProject("1.2.3");
+
+        BuildResult result = runner("publishRelease", "--dry-run").buildAndFail();
+
+        assertTrue(result.getOutput().contains(
+            "publishRelease requires easyPublishing.releaseRepositoryUrl"
+        ));
+    }
+
+    @Test
+    void usesExplicitlyConfiguredCentralPortal() throws IOException {
+        writeProject("1.2.3");
+        Files.writeString(
+            new File(projectDir, "build.gradle").toPath(),
+            """
+
+            easyPublishing {
+                releaseRepositoryUrl = 'https://central.sonatype.com'
+                usernameEnvironmentVariable = 'CENTRAL_PORTAL_USERNAME'
+                passwordEnvironmentVariable = 'CENTRAL_PORTAL_PASSWORD'
+                signingKeyEnvironmentVariable = 'SIGNING_KEY'
+                signingPasswordEnvironmentVariable = 'SIGNING_PASSWORD'
+            }
+            """,
+            java.nio.file.StandardOpenOption.APPEND
+        );
 
         BuildResult result = runner("publishRelease", "--dry-run").build();
 
