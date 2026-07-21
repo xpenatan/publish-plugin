@@ -20,8 +20,8 @@ group = providers.gradleProperty("group").get()
 val requestedTaskNames = gradle.startParameter.taskNames.map { it.substringAfterLast(':') }.toSet()
 fun isTaskRequested(vararg names: String) = names.any(requestedTaskNames::contains)
 
-val publishPluginTaskGroup = "publish-plugin"
-val publicPublishPluginTasks = setOf(
+val easyPublishingTaskGroup = "easy-publishing"
+val publicEasyPublishingTasks = setOf(
     "prepareSnapshot",
     "prepareRelease",
     "publishSnapshot",
@@ -57,16 +57,16 @@ tasks.withType<JavaCompile>().configureEach {
 }
 
 gradlePlugin {
-    website.set("https://github.com/xpenatan/publish-plugin")
-    vcsUrl.set("https://github.com/xpenatan/publish-plugin.git")
+    website.set("https://github.com/xpenatan/easy-publishing")
+    vcsUrl.set("https://github.com/xpenatan/easy-publishing.git")
 
     plugins {
-        create("xpenatanPublish") {
-            id = "com.github.xpenatan.publish"
-            implementationClass = "com.github.xpenatan.publish.PublishPlugin"
-            displayName = "Xpenatan Maven Publish Plugin"
-            description = "Prepares and publishes snapshot and release repositories for Maven Central."
-            tags.set(listOf("publishing", "maven-central", "snapshot", "release"))
+        create("easyPublishing") {
+            id = "com.github.xpenatan.easy-publishing"
+            implementationClass = "com.github.xpenatan.easypublishing.EasyPublishingPlugin"
+            displayName = "EasyPublishing"
+            description = "Prepares and publishes snapshots and releases to Maven repositories and Maven Central."
+            tags.set(listOf("publishing", "maven", "maven-central", "snapshot", "release"))
         }
     }
 }
@@ -106,9 +106,9 @@ publishing {
 
     publications.withType<MavenPublication>().configureEach {
         pom {
-            name.set("Xpenatan Maven Publish Plugin")
-            description.set("Reusable snapshot and release publishing workflow for Maven Central.")
-            url.set("https://github.com/xpenatan/publish-plugin")
+            name.set("EasyPublishing")
+            description.set("Reusable snapshot and release publishing for Maven repositories and Maven Central.")
+            url.set("https://github.com/xpenatan/easy-publishing")
             licenses {
                 license {
                     name.set("The Apache License, Version 2.0")
@@ -122,9 +122,9 @@ publishing {
                 }
             }
             scm {
-                connection.set("scm:git:https://github.com/xpenatan/publish-plugin.git")
-                developerConnection.set("scm:git:ssh://git@github.com/xpenatan/publish-plugin.git")
-                url.set("https://github.com/xpenatan/publish-plugin")
+                connection.set("scm:git:https://github.com/xpenatan/easy-publishing.git")
+                developerConnection.set("scm:git:ssh://git@github.com/xpenatan/easy-publishing.git")
+                url.set("https://github.com/xpenatan/easy-publishing")
             }
         }
     }
@@ -157,20 +157,23 @@ sonatypePublishTasks.configureEach {
     }
 }
 
-tasks.register("prepareSnapshot") {
-    group = publishPluginTaskGroup
+tasks.register<JavaExec>("prepareSnapshot") {
+    group = easyPublishingTaskGroup
     description = "Prepares the plugin snapshot in build/snapshot-deploy without uploading it."
     dependsOn(sonatypePublishTasks)
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.github.xpenatan.easypublishing.SnapshotRepositoryNormalizer")
+    args(snapshotDeployDirectory.get().asFile.absolutePath)
 }
 
 tasks.register("publishSnapshot") {
-    group = publishPluginTaskGroup
+    group = easyPublishingTaskGroup
     description = "Publishes the plugin and its marker to the Sonatype snapshot repository."
     dependsOn(sonatypePublishTasks)
 }
 
 val prepareRelease = tasks.register<Zip>("prepareRelease") {
-    group = publishPluginTaskGroup
+    group = easyPublishingTaskGroup
     description = "Prepares a Maven Central release bundle without uploading it."
     dependsOn(sonatypePublishTasks)
     from(releaseDeployDirectory)
@@ -202,13 +205,13 @@ val uploadToMavenCentral = tasks.register("uploadToMavenCentral") {
         val token = Base64.getEncoder().encodeToString(
             "$username:$password".toByteArray(StandardCharsets.UTF_8)
         )
-        val boundary = "----publish-plugin-${UUID.randomUUID()}"
+        val boundary = "----easy-publishing-${UUID.randomUUID()}"
         val prefix = "--$boundary\r\n" +
             "Content-Disposition: form-data; name=\"bundle\"; filename=\"${bundle.name}\"\r\n" +
             "Content-Type: application/octet-stream\r\n\r\n"
         val suffix = "\r\n--$boundary--\r\n"
         val deploymentName = URLEncoder.encode(
-            "publish-plugin-$publicationVersion",
+            "easy-publishing-$publicationVersion",
             StandardCharsets.UTF_8
         )
         val request = HttpRequest.newBuilder(
@@ -236,7 +239,7 @@ val uploadToMavenCentral = tasks.register("uploadToMavenCentral") {
 }
 
 tasks.register("publishRelease") {
-    group = publishPluginTaskGroup
+    group = easyPublishingTaskGroup
     description = "Prepares and uploads a signed release to the Sonatype Central Portal."
     dependsOn(uploadToMavenCentral)
 }
@@ -244,7 +247,7 @@ tasks.register("publishRelease") {
 gradle.projectsEvaluated {
     tasks.configureEach {
         when {
-            name in publicPublishPluginTasks -> group = publishPluginTaskGroup
+            name in publicEasyPublishingTasks -> group = easyPublishingTaskGroup
             group == "publishing" -> group = null
         }
     }

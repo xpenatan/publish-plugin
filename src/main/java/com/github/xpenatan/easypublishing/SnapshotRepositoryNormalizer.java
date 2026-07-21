@@ -1,6 +1,4 @@
-package com.github.xpenatan.publish;
-
-import org.gradle.api.GradleException;
+package com.github.xpenatan.easypublishing;
 
 import java.io.File;
 import java.io.IOException;
@@ -16,7 +14,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /** Converts Gradle's unique local snapshot names to stable {@code -SNAPSHOT} names. */
-final class SnapshotRepositoryNormalizer {
+public final class SnapshotRepositoryNormalizer {
     private static final Map<String, String> CHECKSUM_ALGORITHMS = Map.of(
         "md5", "MD5",
         "sha1", "SHA-1",
@@ -27,7 +25,14 @@ final class SnapshotRepositoryNormalizer {
     private SnapshotRepositoryNormalizer() {
     }
 
-    static void normalize(File repositoryDirectory) {
+    public static void main(String[] arguments) {
+        if (arguments.length != 1) {
+            throw new IllegalArgumentException("Expected one snapshot repository directory");
+        }
+        normalize(new File(arguments[0]));
+    }
+
+    public static void normalize(File repositoryDirectory) {
         if (!repositoryDirectory.isDirectory()) {
             return;
         }
@@ -39,7 +44,7 @@ final class SnapshotRepositoryNormalizer {
                 .forEach(SnapshotRepositoryNormalizer::normalizeVersionDirectory);
         }
         catch (IOException exception) {
-            throw new GradleException("Unable to normalize prepared snapshot repository", exception);
+            throw new IllegalStateException("Unable to normalize prepared snapshot repository", exception);
         }
     }
 
@@ -72,13 +77,13 @@ final class SnapshotRepositoryNormalizer {
                 matcher.replaceAll(Matcher.quoteReplacement(snapshotVersion))
             );
             if (target.exists()) {
-                throw new GradleException("Snapshot target already exists: " + target);
+                throw new IllegalStateException("Snapshot target already exists: " + target);
             }
             try {
                 Files.move(source.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE);
             }
             catch (IOException exception) {
-                throw new GradleException(
+                throw new IllegalStateException(
                     "Unable to normalize snapshot artifact " + source.getAbsolutePath(),
                     exception
                 );
@@ -111,7 +116,7 @@ final class SnapshotRepositoryNormalizer {
             }
         }
         catch (IOException | NoSuchAlgorithmException exception) {
-            throw new GradleException(
+            throw new IllegalStateException(
                 "Unable to normalize snapshot metadata " + metadata.getAbsolutePath(),
                 exception
             );

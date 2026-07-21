@@ -1,4 +1,4 @@
-package com.github.xpenatan.publish;
+package com.github.xpenatan.easypublishing;
 
 import org.gradle.api.DefaultTask;
 import org.gradle.api.GradleException;
@@ -84,7 +84,7 @@ public abstract class UploadToCentralTask extends DefaultTask {
             + URLEncoder.encode(getDeploymentName().get(), StandardCharsets.UTF_8)
             + "&publishingType=" + publishingType;
 
-        String boundary = "----xpenatan-publish-" + UUID.randomUUID();
+        String boundary = "----easy-publishing-" + UUID.randomUUID();
         String prefix = "--" + boundary + "\r\n"
             + "Content-Disposition: form-data; name=\"bundle\"; filename=\""
             + bundle.getName().replace("\"", "") + "\"\r\n"

@@ -1,4 +1,4 @@
-package com.github.xpenatan.publish;
+package com.github.xpenatan.easypublishing;
 
 import org.gradle.api.Named;
 import org.gradle.api.file.DirectoryProperty;
@@ -17,6 +17,7 @@ public abstract class NestedBuildSpec implements Named {
         getPrepareSnapshotTask().convention("prepareSnapshot");
         getPublishSnapshotTask().convention("publishSnapshot");
         getPrepareReleaseTask().convention("prepareRelease");
+        getPublishReleaseTask().convention("publishRelease");
         getSnapshotDirectory().convention(getDirectory().dir("build/snapshot-deploy"));
         getReleaseDirectory().convention(getDirectory().dir("build/staging-deploy"));
     }
@@ -37,5 +38,6 @@ public abstract class NestedBuildSpec implements Named {
     public abstract Property<String> getPublishSnapshotTask();
 
     public abstract Property<String> getPrepareReleaseTask();
-}
 
+    public abstract Property<String> getPublishReleaseTask();
+}

@@ -1,6 +1,6 @@
-# PublishPlugin
+# EasyPublishing
 
-PublishPlugin is a Gradle plugin for preparing and publishing Maven snapshots and releases. It supports multi-module projects, nested Gradle builds, Maven POM metadata, source and Javadoc artifacts, signing, local deployment preparation, and publishing through the Maven Central Portal.
+EasyPublishing is a Gradle plugin for preparing and publishing Maven snapshots and releases. It supports multi-module projects, nested Gradle builds, Maven POM metadata, source and Javadoc artifacts, signing, local deployment preparation, any Maven-compatible repository, and the Maven Central Portal.
 
 ## Usage
 
@@ -20,10 +20,10 @@ Apply and configure the plugin in the root `build.gradle.kts`:
 
 ```kotlin
 plugins {
-    id("com.github.xpenatan.publish") version "-SNAPSHOT"
+    id("com.github.xpenatan.easy-publishing") version "-SNAPSHOT"
 }
 
-val releaseRequested = rootProject.extra["publishPlugin.releaseRequested"] as Boolean
+val releaseRequested = rootProject.extra["easyPublishing.releaseRequested"] as Boolean
 val libraryVersion = "1.0.0"
 
 allprojects {
@@ -31,7 +31,7 @@ allprojects {
     version = if(releaseRequested) libraryVersion else "$libraryVersion-SNAPSHOT"
 }
 
-publishPlugin {
+easyPublishing {
     modules(":core", ":desktop")
 
     pomName.set("Example Library")
@@ -56,7 +56,43 @@ For a single-project build, omit `modules`; the root project is selected automat
 ./gradlew prepareSnapshot  # Create build/snapshot-deploy
 ./gradlew publishSnapshot  # Publish the snapshot
 ./gradlew prepareRelease   # Create build/staging-deploy.zip
-./gradlew publishRelease   # Upload the release bundle
+./gradlew publishRelease   # Publish the release to the configured provider
 ```
 
-Publishing uses `CENTRAL_PORTAL_USERNAME`, `CENTRAL_PORTAL_PASSWORD`, `SIGNING_KEY`, and `SIGNING_PASSWORD` from the environment.
+The default Maven Central workflow uses `CENTRAL_PORTAL_USERNAME`,
+`CENTRAL_PORTAL_PASSWORD`, `SIGNING_KEY`, and `SIGNING_PASSWORD` from the environment.
+
+## Other Maven Repositories
+
+Snapshots can be sent to any Maven-compatible repository by changing
+`snapshotRepositoryUrl`. To publish releases directly instead of using the Maven Central
+Portal bundle API, set `releaseRepositoryUrl`:
+
+```kotlin
+easyPublishing {
+    snapshotRepositoryUrl.set("https://packages.example.com/maven/snapshots")
+    releaseRepositoryUrl.set("https://packages.example.com/maven/releases")
+
+    usernameEnvironmentVariable.set("MAVEN_REPOSITORY_USERNAME")
+    passwordEnvironmentVariable.set("MAVEN_REPOSITORY_TOKEN")
+}
+```
+
+The token is supplied as the repository password, which works with standard
+username/password, deploy-token, and personal-access-token Maven repositories. Public and
+local `file:` repositories do not require credentials. For an explicitly trusted plain-HTTP
+repository, also set `allowInsecureProtocol.set(true)`.
+
+When `releaseRepositoryUrl` is configured, `publishRelease` uploads the POM, JARs, Gradle
+metadata, signatures, and checksums directly through Gradle's Maven publisher. If it is not
+configured, `publishRelease` keeps the default Maven Central Portal ZIP workflow.
+`prepareRelease` always creates `build/staging-deploy.zip` without uploading anything.
+
+The same settings can be supplied on the command line or in `gradle.properties`, which is
+especially useful for nested builds:
+
+```properties
+easyPublishing.releaseRepositoryUrl=https://packages.example.com/maven/releases
+easyPublishing.usernameEnvironmentVariable=MAVEN_REPOSITORY_USERNAME
+easyPublishing.passwordEnvironmentVariable=MAVEN_REPOSITORY_TOKEN
+```

@@ -1,4 +1,4 @@
-package com.github.xpenatan.publish;
+package com.github.xpenatan.easypublishing;
 
 import org.gradle.api.DefaultTask;
 import org.gradle.api.GradleException;
@@ -50,4 +50,3 @@ public abstract class ValidatePublicationsTask extends DefaultTask {
         }
     }
 }
-

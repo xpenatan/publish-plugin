@@ -1,4 +1,4 @@
-package com.github.xpenatan.publish;
+package com.github.xpenatan.easypublishing;
 
 import org.gradle.api.Action;
 import org.gradle.api.NamedDomainObjectContainer;
@@ -13,12 +13,12 @@ import javax.inject.Inject;
 import java.util.ArrayList;
 import java.util.Arrays;
 
-/** Configuration for the {@code com.github.xpenatan.publish} plugin. */
-public abstract class PublishExtension {
+/** Configuration for the {@code com.github.xpenatan.easy-publishing} plugin. */
+public abstract class EasyPublishingExtension {
     private final NamedDomainObjectContainer<NestedBuildSpec> nestedBuilds;
 
     @Inject
-    public PublishExtension(Project project, ObjectFactory objects) {
+    public EasyPublishingExtension(Project project, ObjectFactory objects) {
         nestedBuilds = objects.domainObjectContainer(
             NestedBuildSpec.class,
             name -> objects.newInstance(NestedBuildSpec.class, name)
@@ -40,11 +40,31 @@ public abstract class PublishExtension {
         getDeveloperEmail().convention("");
 
         getSnapshotRepositoryUrl().convention("https://central.sonatype.com/repository/maven-snapshots/");
+        getReleaseRepositoryUrl().convention(
+            project.getProviders().gradleProperty("easyPublishing.releaseRepositoryUrl").orElse("")
+        );
         getCentralPortalUrl().convention("https://central.sonatype.com");
-        getUsernameEnvironmentVariable().convention("CENTRAL_PORTAL_USERNAME");
-        getPasswordEnvironmentVariable().convention("CENTRAL_PORTAL_PASSWORD");
-        getSigningKeyEnvironmentVariable().convention("SIGNING_KEY");
-        getSigningPasswordEnvironmentVariable().convention("SIGNING_PASSWORD");
+        getUsernameEnvironmentVariable().convention(
+            project.getProviders().gradleProperty("easyPublishing.usernameEnvironmentVariable")
+                .orElse("CENTRAL_PORTAL_USERNAME")
+        );
+        getPasswordEnvironmentVariable().convention(
+            project.getProviders().gradleProperty("easyPublishing.passwordEnvironmentVariable")
+                .orElse("CENTRAL_PORTAL_PASSWORD")
+        );
+        getSigningKeyEnvironmentVariable().convention(
+            project.getProviders().gradleProperty("easyPublishing.signingKeyEnvironmentVariable")
+                .orElse("SIGNING_KEY")
+        );
+        getSigningPasswordEnvironmentVariable().convention(
+            project.getProviders().gradleProperty("easyPublishing.signingPasswordEnvironmentVariable")
+                .orElse("SIGNING_PASSWORD")
+        );
+        getAllowInsecureProtocol().convention(
+            project.getProviders().gradleProperty("easyPublishing.allowInsecureProtocol")
+                .map(Boolean::parseBoolean)
+                .orElse(false)
+        );
         getAutomaticRelease().convention(false);
         getRequireSigningForUpload().convention(true);
         getAddJavaDocumentationArtifacts().convention(true);
@@ -103,6 +123,9 @@ public abstract class PublishExtension {
 
     public abstract Property<String> getSnapshotRepositoryUrl();
 
+    /** Optional Maven repository used by publishRelease instead of the Central Portal. */
+    public abstract Property<String> getReleaseRepositoryUrl();
+
     public abstract Property<String> getCentralPortalUrl();
 
     public abstract Property<String> getUsernameEnvironmentVariable();
@@ -112,6 +135,8 @@ public abstract class PublishExtension {
     public abstract Property<String> getSigningKeyEnvironmentVariable();
 
     public abstract Property<String> getSigningPasswordEnvironmentVariable();
+
+    public abstract Property<Boolean> getAllowInsecureProtocol();
 
     public abstract Property<Boolean> getAutomaticRelease();
 

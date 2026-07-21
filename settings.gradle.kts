@@ -1,2 +1,1 @@
-rootProject.name = "publish-plugin"
-
+rootProject.name = "easy-publishing"

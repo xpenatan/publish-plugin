@@ -1,4 +1,4 @@
-package com.github.xpenatan.publish;
+package com.github.xpenatan.easypublishing;
 
 import org.gradle.api.GradleException;
 import org.gradle.api.Plugin;
@@ -29,12 +29,26 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-/** Reusable snapshot and Maven Central release publishing workflow. */
-public class PublishPlugin implements Plugin<Project> {
-    public static final String EXTENSION_NAME = "publishPlugin";
-    public static final String RELEASE_REQUESTED_EXTRA = "publishPlugin.releaseRequested";
-    private static final String TASK_GROUP = "publish-plugin";
-    private static final String REPOSITORY_NAME = "xpePublish";
+/** Reusable snapshot and release publishing workflow for Maven-compatible repositories. */
+public class EasyPublishingPlugin implements Plugin<Project> {
+    public static final String EXTENSION_NAME = "easyPublishing";
+    public static final String RELEASE_REQUESTED_EXTRA = "easyPublishing.releaseRequested";
+    private static final String TASK_GROUP = "easy-publishing";
+    private static final String REPOSITORY_NAME = "easyPublishing";
+    private static final String RELEASE_REPOSITORY_NAME = "easyPublishingRelease";
+    private static final String PUBLISH_TASK_SUFFIX = "ToEasyPublishingRepository";
+    private static final String RELEASE_PUBLISH_TASK_SUFFIX = "ToEasyPublishingReleaseRepository";
+    private static final String RELEASE_REPOSITORY_URL_PROPERTY = "easyPublishing.releaseRepositoryUrl";
+    private static final String USERNAME_ENVIRONMENT_PROPERTY =
+        "easyPublishing.usernameEnvironmentVariable";
+    private static final String PASSWORD_ENVIRONMENT_PROPERTY =
+        "easyPublishing.passwordEnvironmentVariable";
+    private static final String SIGNING_KEY_ENVIRONMENT_PROPERTY =
+        "easyPublishing.signingKeyEnvironmentVariable";
+    private static final String SIGNING_PASSWORD_ENVIRONMENT_PROPERTY =
+        "easyPublishing.signingPasswordEnvironmentVariable";
+    private static final String ALLOW_INSECURE_PROTOCOL_PROPERTY =
+        "easyPublishing.allowInsecureProtocol";
     private static final Set<String> PUBLIC_TASK_NAMES = Set.of(
         "prepareSnapshot",
         "prepareRelease",
@@ -45,16 +59,16 @@ public class PublishPlugin implements Plugin<Project> {
     @Override
     public void apply(Project project) {
         if (project != project.getRootProject()) {
-            throw new GradleException("com.github.xpenatan.publish must be applied to the root project");
+            throw new GradleException("com.github.xpenatan.easy-publishing must be applied to the root project");
         }
 
         boolean releaseRequested = isReleaseRequested(project);
         boolean localSnapshotRequested = isAnyTaskRequested(project, "prepareSnapshot");
         project.getExtensions().getExtraProperties().set(RELEASE_REQUESTED_EXTRA, releaseRequested);
 
-        PublishExtension extension = project.getExtensions().create(
+        EasyPublishingExtension extension = project.getExtensions().create(
             EXTENSION_NAME,
-            PublishExtension.class,
+            EasyPublishingExtension.class,
             project
         );
 
@@ -108,7 +122,7 @@ public class PublishPlugin implements Plugin<Project> {
 
         TaskProvider<Zip> prepareRelease = project.getTasks().register("prepareRelease", Zip.class, task -> {
             task.setGroup(TASK_GROUP);
-            task.setDescription("Prepares and zips a Maven Central release bundle without uploading it.");
+            task.setDescription("Prepares and zips a local Maven release repository without uploading it.");
             task.dependsOn(assembleRelease);
             task.from(extension.getReleaseDirectory());
         });
@@ -138,12 +152,23 @@ public class PublishPlugin implements Plugin<Project> {
 
         TaskProvider<Task> publishRelease = project.getTasks().register("publishRelease", task -> {
             task.setGroup(TASK_GROUP);
-            task.setDescription("Prepares and uploads a release bundle to the Central Publisher Portal.");
-            task.dependsOn(uploadRelease);
+            task.setDescription("Publishes all release publications to the configured provider.");
         });
 
         project.afterEvaluate(ignored -> {
             configureReleaseArchive(prepareRelease, extension);
+            boolean directRelease = notBlank(extension.getReleaseRepositoryUrl().getOrElse(""));
+            if (directRelease) {
+                publishRelease.configure(task -> task.setDescription(
+                    "Publishes all release publications to the configured Maven repository."
+                ));
+            }
+            else {
+                publishRelease.configure(task -> {
+                    task.setDescription("Prepares and uploads a release bundle to the Central Publisher Portal.");
+                    task.dependsOn(uploadRelease);
+                });
+            }
             Set<Project> publicationProjects = resolvePublicationProjects(project, extension);
             for (Project publicationProject : publicationProjects) {
                 if (publicationProject == project || publicationProject.getState().getExecuted()) {
@@ -181,7 +206,9 @@ public class PublishPlugin implements Plugin<Project> {
                 extension,
                 prepareSnapshot,
                 assembleRelease,
-                publishSnapshot
+                publishSnapshot,
+                publishRelease,
+                directRelease
             );
 
             wirePublicationTasks(
@@ -195,7 +222,8 @@ public class PublishPlugin implements Plugin<Project> {
                 validateRelease,
                 prepareSnapshot,
                 assembleRelease,
-                publishSnapshot
+                publishSnapshot,
+                publishRelease
             );
         });
 
@@ -208,7 +236,7 @@ public class PublishPlugin implements Plugin<Project> {
 
     /** Can be used by version logic before publications are configured. */
     public static boolean isReleaseRequested(Project project) {
-        String property = stringProperty(project, "publishPlugin.release");
+        String property = stringProperty(project, "easyPublishing.release");
         return Boolean.parseBoolean(property) || isAnyTaskRequested(
             project,
             "prepareRelease",
@@ -229,7 +257,7 @@ public class PublishPlugin implements Plugin<Project> {
         });
     }
 
-    private static Set<Project> resolvePublicationProjects(Project root, PublishExtension extension) {
+    private static Set<Project> resolvePublicationProjects(Project root, EasyPublishingExtension extension) {
         List<String> paths = extension.getModules().getOrElse(Collections.emptyList());
         if (paths.isEmpty()) {
             paths = Collections.singletonList(root.getPath());
@@ -262,7 +290,7 @@ public class PublishPlugin implements Plugin<Project> {
     private static void configurePublicationProject(
         Project project,
         Project root,
-        PublishExtension extension,
+        EasyPublishingExtension extension,
         boolean releaseRequested,
         boolean localSnapshotRequested,
         TaskProvider<ValidatePublicationsTask> validateSnapshot,
@@ -302,23 +330,26 @@ public class PublishPlugin implements Plugin<Project> {
             repository.setUrl(extension.getSnapshotDirectory());
         }
         else {
-            repository.setUrl(extension.getSnapshotRepositoryUrl());
-            String username = System.getenv(extension.getUsernameEnvironmentVariable().get());
-            String password = System.getenv(extension.getPasswordEnvironmentVariable().get());
-            if (notBlank(username) && notBlank(password)) {
-                String finalUsername = username;
-                String finalPassword = password;
-                repository.credentials(credentials -> {
-                    credentials.setUsername(finalUsername);
-                    credentials.setPassword(finalPassword);
-                });
+            configureRemoteRepository(repository, extension.getSnapshotRepositoryUrl().get(), extension);
+        }
+
+        if (releaseRequested && notBlank(extension.getReleaseRepositoryUrl().getOrElse(""))) {
+            MavenArtifactRepository releaseRepository =
+                (MavenArtifactRepository) repositories.findByName(RELEASE_REPOSITORY_NAME);
+            if (releaseRepository == null) {
+                releaseRepository = repositories.maven(repo -> repo.setName(RELEASE_REPOSITORY_NAME));
             }
+            configureRemoteRepository(
+                releaseRepository,
+                extension.getReleaseRepositoryUrl().get(),
+                extension
+            );
         }
 
         configureSigning(project, publishing, extension);
     }
 
-    private static void configureJavaArtifacts(Project project, PublishExtension extension) {
+    private static void configureJavaArtifacts(Project project, EasyPublishingExtension extension) {
         project.getPlugins().withId("java", ignored -> {
             if (extension.getAddJavaDocumentationArtifacts().get()) {
                 JavaPluginExtension java = project.getExtensions().getByType(JavaPluginExtension.class);
@@ -334,7 +365,7 @@ public class PublishPlugin implements Plugin<Project> {
         });
     }
 
-    private static void configurePom(MavenPom pom, PublishExtension extension) {
+    private static void configurePom(MavenPom pom, EasyPublishingExtension extension) {
         setIfNotBlank(pom.getName(), extension.getPomName().getOrElse(""));
         setIfNotBlank(pom.getDescription(), extension.getPomDescription().getOrElse(""));
         setIfNotBlank(pom.getUrl(), extension.getProjectUrl().getOrElse(""));
@@ -371,7 +402,7 @@ public class PublishPlugin implements Plugin<Project> {
     private static void configureSigning(
         Project project,
         PublishingExtension publishing,
-        PublishExtension extension
+        EasyPublishingExtension extension
     ) {
         String key = System.getenv(extension.getSigningKeyEnvironmentVariable().get());
         String password = System.getenv(extension.getSigningPasswordEnvironmentVariable().get());
@@ -382,12 +413,32 @@ public class PublishPlugin implements Plugin<Project> {
         }
     }
 
+    private static void configureRemoteRepository(
+        MavenArtifactRepository repository,
+        String url,
+        EasyPublishingExtension extension
+    ) {
+        repository.setUrl(url);
+        repository.setAllowInsecureProtocol(extension.getAllowInsecureProtocol().get());
+
+        String username = System.getenv(extension.getUsernameEnvironmentVariable().get());
+        String password = System.getenv(extension.getPasswordEnvironmentVariable().get());
+        if (notBlank(username) && notBlank(password)) {
+            repository.credentials(credentials -> {
+                credentials.setUsername(username);
+                credentials.setPassword(password);
+            });
+        }
+    }
+
     private static void configureNestedBuilds(
         Project root,
-        PublishExtension extension,
+        EasyPublishingExtension extension,
         TaskProvider<PrepareRepositoryTask> prepareSnapshot,
         TaskProvider<PrepareRepositoryTask> assembleRelease,
-        TaskProvider<Task> publishSnapshot
+        TaskProvider<Task> publishSnapshot,
+        TaskProvider<Task> publishRelease,
+        boolean directRelease
     ) {
         for (NestedBuildSpec nested : extension.getNestedBuilds()) {
             if (!nested.getDirectory().isPresent()) {
@@ -415,6 +466,19 @@ public class PublishPlugin implements Plugin<Project> {
                 nested.getPublishSnapshotTask().get(),
                 "Publishes snapshot artifacts from nested build '" + nested.getName() + "'."
             );
+            if (directRelease) {
+                TaskProvider<GradleBuild> nestedPublishRelease = nestedBuildTask(
+                    root,
+                    "publish" + suffix + "Release",
+                    nested,
+                    nested.getPublishReleaseTask().get(),
+                    "Publishes release artifacts from nested build '" + nested.getName() + "'."
+                );
+                nestedPublishRelease.configure(task ->
+                    configureNestedReleaseProperties(task, extension)
+                );
+                publishRelease.configure(task -> task.dependsOn(nestedPublishRelease));
+            }
 
             prepareSnapshot.configure(task -> {
                 task.dependsOn(nestedSnapshot);
@@ -426,6 +490,26 @@ public class PublishPlugin implements Plugin<Project> {
             });
             publishSnapshot.configure(task -> task.dependsOn(nestedPublishSnapshot));
         }
+    }
+
+    private static void configureNestedReleaseProperties(
+        GradleBuild task,
+        EasyPublishingExtension extension
+    ) {
+        var properties = new java.util.LinkedHashMap<>(task.getStartParameter().getProjectProperties());
+        properties.put(RELEASE_REPOSITORY_URL_PROPERTY, extension.getReleaseRepositoryUrl().get());
+        properties.put(USERNAME_ENVIRONMENT_PROPERTY, extension.getUsernameEnvironmentVariable().get());
+        properties.put(PASSWORD_ENVIRONMENT_PROPERTY, extension.getPasswordEnvironmentVariable().get());
+        properties.put(SIGNING_KEY_ENVIRONMENT_PROPERTY, extension.getSigningKeyEnvironmentVariable().get());
+        properties.put(
+            SIGNING_PASSWORD_ENVIRONMENT_PROPERTY,
+            extension.getSigningPasswordEnvironmentVariable().get()
+        );
+        properties.put(
+            ALLOW_INSECURE_PROTOCOL_PROPERTY,
+            extension.getAllowInsecureProtocol().get().toString()
+        );
+        task.getStartParameter().setProjectProperties(properties);
     }
 
     private static TaskProvider<GradleBuild> nestedBuildTask(
@@ -453,36 +537,38 @@ public class PublishPlugin implements Plugin<Project> {
         TaskProvider<ValidatePublicationsTask> validateRelease,
         TaskProvider<PrepareRepositoryTask> prepareSnapshot,
         TaskProvider<PrepareRepositoryTask> assembleRelease,
-        TaskProvider<Task> publishSnapshot
+        TaskProvider<Task> publishSnapshot,
+        TaskProvider<Task> publishRelease
     ) {
         for (Project project : publicationProjects) {
             var publicationTasks = project.getTasks().withType(PublishToMavenRepository.class);
-            publicationTasks.configureEach(task -> {
-                if (releaseRequested) {
-                    task.dependsOn(cleanReleaseRoot, validateRelease);
-                }
-                else if (localSnapshotRequested) {
-                    task.dependsOn(cleanSnapshotRoot, validateSnapshot);
-                }
-                else {
-                    task.dependsOn(validateSnapshot);
-                }
-            });
+            var stagingTasks = publicationTasks.matching(
+                task -> task.getName().endsWith(PUBLISH_TASK_SUFFIX)
+            );
+            var directReleaseTasks = publicationTasks.matching(
+                task -> task.getName().endsWith(RELEASE_PUBLISH_TASK_SUFFIX)
+            );
+
             if (releaseRequested) {
-                assembleRelease.configure(aggregate -> aggregate.dependsOn(publicationTasks));
+                stagingTasks.configureEach(task -> task.dependsOn(cleanReleaseRoot, validateRelease));
+                directReleaseTasks.configureEach(task -> task.dependsOn(validateRelease));
+                assembleRelease.configure(aggregate -> aggregate.dependsOn(stagingTasks));
+                publishRelease.configure(aggregate -> aggregate.dependsOn(directReleaseTasks));
             }
             else if (localSnapshotRequested) {
-                prepareSnapshot.configure(aggregate -> aggregate.dependsOn(publicationTasks));
+                stagingTasks.configureEach(task -> task.dependsOn(cleanSnapshotRoot, validateSnapshot));
+                prepareSnapshot.configure(aggregate -> aggregate.dependsOn(stagingTasks));
             }
             else {
-                publishSnapshot.configure(aggregate -> aggregate.dependsOn(publicationTasks));
+                stagingTasks.configureEach(task -> task.dependsOn(validateSnapshot));
+                publishSnapshot.configure(aggregate -> aggregate.dependsOn(stagingTasks));
             }
         }
     }
 
     private static void configureReleaseArchive(
         TaskProvider<Zip> prepareRelease,
-        PublishExtension extension
+        EasyPublishingExtension extension
     ) {
         File bundle = extension.getReleaseBundle().get().getAsFile();
         prepareRelease.configure(task -> {
