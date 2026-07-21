@@ -143,7 +143,7 @@ class PublishPluginFunctionalTest {
                 id 'com.github.xpenatan.publish'
             }
 
-            xpePublishing {
+            publishPlugin {
                 modules ':library'
                 pomName = 'Selected Library'
             }
@@ -156,7 +156,7 @@ class PublishPluginFunctionalTest {
             }
 
             group = 'com.example.multi'
-            version = rootProject.ext['xpePublishing.releaseRequested'] ? '2.0.0' : '2.0.0-SNAPSHOT'
+            version = rootProject.ext['publishPlugin.releaseRequested'] ? '2.0.0' : '2.0.0-SNAPSHOT'
 
             publishing {
                 publications {
@@ -198,7 +198,7 @@ class PublishPluginFunctionalTest {
                 id 'com.github.xpenatan.publish'
             }
 
-            xpePublishing {
+            publishPlugin {
                 nestedBuild('tool') {
                     directory = layout.projectDirectory.dir('tool')
                     snapshotDirectory = layout.projectDirectory.dir('tool/out/snapshot')
@@ -258,7 +258,7 @@ class PublishPluginFunctionalTest {
             group = "com.example.kotlin"
             version = "3.0.0-SNAPSHOT"
 
-            xpePublishing {
+            publishPlugin {
                 pomName.set("Kotlin DSL Library")
                 pomDescription.set("Configured from Kotlin DSL")
                 projectUrl.set("https://github.com/example/kotlin-lib")
@@ -305,7 +305,7 @@ class PublishPluginFunctionalTest {
             group = 'com.example'
             version = '%s'
 
-            xpePublishing {
+            publishPlugin {
                 pomName = 'Sample Library'
                 pomDescription = 'A functional-test library'
                 projectUrl = 'https://github.com/example/sample'

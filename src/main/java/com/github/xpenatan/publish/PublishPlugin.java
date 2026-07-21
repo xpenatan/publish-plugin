@@ -31,8 +31,8 @@ import java.util.stream.Collectors;
 
 /** Reusable snapshot and Maven Central release publishing workflow. */
 public class PublishPlugin implements Plugin<Project> {
-    public static final String EXTENSION_NAME = "xpePublishing";
-    public static final String RELEASE_REQUESTED_EXTRA = "xpePublishing.releaseRequested";
+    public static final String EXTENSION_NAME = "publishPlugin";
+    public static final String RELEASE_REQUESTED_EXTRA = "publishPlugin.releaseRequested";
     private static final String TASK_GROUP = "publish-plugin";
     private static final String REPOSITORY_NAME = "xpePublish";
     private static final Set<String> PUBLIC_TASK_NAMES = Set.of(
@@ -208,7 +208,7 @@ public class PublishPlugin implements Plugin<Project> {
 
     /** Can be used by version logic before publications are configured. */
     public static boolean isReleaseRequested(Project project) {
-        String property = stringProperty(project, "xpePublishing.release");
+        String property = stringProperty(project, "publishPlugin.release");
         return Boolean.parseBoolean(property) || isAnyTaskRequested(
             project,
             "prepareRelease",

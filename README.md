@@ -20,10 +20,10 @@ Apply and configure the plugin in the root `build.gradle.kts`:
 
 ```kotlin
 plugins {
-    id("com.github.xpenatan.publish") version "0.1.0-SNAPSHOT"
+    id("com.github.xpenatan.publish") version "-SNAPSHOT"
 }
 
-val releaseRequested = rootProject.extra["xpePublishing.releaseRequested"] as Boolean
+val releaseRequested = rootProject.extra["publishPlugin.releaseRequested"] as Boolean
 val libraryVersion = "1.0.0"
 
 allprojects {
@@ -31,7 +31,7 @@ allprojects {
     version = if(releaseRequested) libraryVersion else "$libraryVersion-SNAPSHOT"
 }
 
-xpePublishing {
+publishPlugin {
     modules(":core", ":desktop")
 
     pomName.set("Example Library")
