@@ -25,6 +25,46 @@ class PublishPluginFunctionalTest {
     File projectDir;
 
     @Test
+    void exposesOnlyFourPublishPluginTasks() throws IOException {
+        writeProject("-SNAPSHOT");
+        Files.writeString(
+            new File(projectDir, "settings.gradle").toPath(),
+            "rootProject.name = 'sample-lib'\ninclude 'unmanaged-publication'\n"
+        );
+        File unmanagedPublication = new File(projectDir, "unmanaged-publication");
+        Files.createDirectories(unmanagedPublication.toPath());
+        Files.writeString(new File(unmanagedPublication, "build.gradle").toPath(), """
+            plugins {
+                id 'java-library'
+                id 'maven-publish'
+            }
+
+            publishing {
+                publications {
+                    maven(MavenPublication) {
+                        from components.java
+                    }
+                }
+            }
+            """);
+
+        String output = runner("tasks").build().getOutput();
+
+        assertTrue(output.contains("Publish-plugin tasks"));
+        assertTrue(output.contains("prepareSnapshot - "));
+        assertTrue(output.contains("prepareRelease - "));
+        assertTrue(output.contains("publishSnapshot - "));
+        assertTrue(output.contains("publishRelease - "));
+        assertFalse(output.contains("Publishing tasks"));
+        assertFalse(output.contains("prepareSnapshotDeploy"));
+        assertFalse(output.contains("prepareReleaseDeploy"));
+        assertFalse(output.contains("assembleReleaseRepository"));
+        assertFalse(output.contains("validateSnapshotPublication"));
+        assertFalse(output.contains("generatePomFileForMavenPublication"));
+        assertFalse(output.contains("publishMavenPublicationToXpePublishRepository"));
+    }
+
+    @Test
     void preparesSnapshotRepositoryAndPom() throws IOException {
         writeProject("1.2.3-SNAPSHOT");
 

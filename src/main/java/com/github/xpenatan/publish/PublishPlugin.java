@@ -33,7 +33,14 @@ import java.util.stream.Collectors;
 public class PublishPlugin implements Plugin<Project> {
     public static final String EXTENSION_NAME = "xpePublishing";
     public static final String RELEASE_REQUESTED_EXTRA = "xpePublishing.releaseRequested";
+    private static final String TASK_GROUP = "publish-plugin";
     private static final String REPOSITORY_NAME = "xpePublish";
+    private static final Set<String> PUBLIC_TASK_NAMES = Set.of(
+        "prepareSnapshot",
+        "prepareRelease",
+        "publishSnapshot",
+        "publishRelease"
+    );
 
     @Override
     public void apply(Project project) {
@@ -42,7 +49,7 @@ public class PublishPlugin implements Plugin<Project> {
         }
 
         boolean releaseRequested = isReleaseRequested(project);
-        boolean localSnapshotRequested = isAnyTaskRequested(project, "prepareSnapshot", "prepareSnapshotDeploy");
+        boolean localSnapshotRequested = isAnyTaskRequested(project, "prepareSnapshot");
         project.getExtensions().getExtraProperties().set(RELEASE_REQUESTED_EXTRA, releaseRequested);
 
         PublishExtension extension = project.getExtensions().create(
@@ -80,11 +87,11 @@ public class PublishPlugin implements Plugin<Project> {
             "prepareSnapshot",
             PrepareRepositoryTask.class,
             task -> {
-            task.setGroup("publishing");
-            task.setDescription("Prepares a clean local Maven repository containing all snapshot publications.");
-            task.getDestinationDirectory().set(extension.getSnapshotDirectory());
-            task.getNormalizeSnapshots().set(true);
-            task.dependsOn(cleanSnapshotRoot);
+                task.setGroup(TASK_GROUP);
+                task.setDescription("Prepares a clean local Maven repository containing all snapshot publications.");
+                task.getDestinationDirectory().set(extension.getSnapshotDirectory());
+                task.getNormalizeSnapshots().set(true);
+                task.dependsOn(cleanSnapshotRoot);
             }
         );
 
@@ -92,7 +99,6 @@ public class PublishPlugin implements Plugin<Project> {
             "assembleReleaseRepository",
             PrepareRepositoryTask.class,
             task -> {
-                task.setGroup("publishing");
                 task.setDescription("Assembles the staged Maven release repository.");
                 task.getDestinationDirectory().set(extension.getReleaseDirectory());
                 task.getNormalizeSnapshots().set(false);
@@ -101,14 +107,14 @@ public class PublishPlugin implements Plugin<Project> {
         );
 
         TaskProvider<Zip> prepareRelease = project.getTasks().register("prepareRelease", Zip.class, task -> {
-            task.setGroup("publishing");
+            task.setGroup(TASK_GROUP);
             task.setDescription("Prepares and zips a Maven Central release bundle without uploading it.");
             task.dependsOn(assembleRelease);
             task.from(extension.getReleaseDirectory());
         });
 
         TaskProvider<Task> publishSnapshot = project.getTasks().register("publishSnapshot", task -> {
-            task.setGroup("publishing");
+            task.setGroup(TASK_GROUP);
             task.setDescription("Publishes all snapshot publications to the configured snapshot repository.");
         });
 
@@ -116,7 +122,6 @@ public class PublishPlugin implements Plugin<Project> {
             "uploadReleaseToMavenCentral",
             UploadToCentralTask.class,
             task -> {
-                task.setGroup("publishing");
                 task.setDescription("Uploads the prepared release bundle to the Central Publisher Portal.");
                 task.dependsOn(prepareRelease);
                 task.getBundleFile().set(extension.getReleaseBundle());
@@ -132,12 +137,10 @@ public class PublishPlugin implements Plugin<Project> {
         );
 
         TaskProvider<Task> publishRelease = project.getTasks().register("publishRelease", task -> {
-            task.setGroup("publishing");
+            task.setGroup(TASK_GROUP);
             task.setDescription("Prepares and uploads a release bundle to the Central Publisher Portal.");
             task.dependsOn(uploadRelease);
         });
-
-        registerAliases(project, prepareSnapshot, prepareRelease, uploadRelease);
 
         project.afterEvaluate(ignored -> {
             configureReleaseArchive(prepareRelease, extension);
@@ -196,6 +199,8 @@ public class PublishPlugin implements Plugin<Project> {
             );
         });
 
+        project.getGradle().projectsEvaluated(ignored -> hideNonPublicPublishingTasks(project));
+
         // Apply after registering our root listener for the same lifecycle ordering used above.
         project.getPluginManager().apply("maven-publish");
         project.getPluginManager().apply("signing");
@@ -207,12 +212,8 @@ public class PublishPlugin implements Plugin<Project> {
         return Boolean.parseBoolean(property) || isAnyTaskRequested(
             project,
             "prepareRelease",
-            "prepareReleaseDeploy",
             "publishRelease",
-            "publishTestRelease",
-            "uploadReleaseToMavenCentral",
-            "uploadToMavenCentral",
-            "zipStagingDeploy"
+            "uploadReleaseToMavenCentral"
         );
     }
 
@@ -222,7 +223,6 @@ public class PublishPlugin implements Plugin<Project> {
         boolean release
     ) {
         return root.getTasks().register(name, ValidatePublicationsTask.class, task -> {
-            task.setGroup("publishing");
             task.setDescription("Validates " + (release ? "release" : "snapshot") + " publication versions.");
             task.getRelease().set(release);
             task.getPublications().convention(Collections.emptyMap());
@@ -244,6 +244,19 @@ public class PublishPlugin implements Plugin<Project> {
             projects.add(selected);
         }
         return projects;
+    }
+
+    private static void hideNonPublicPublishingTasks(Project root) {
+        for (Project project : root.getAllprojects()) {
+            project.getTasks().configureEach(task -> {
+                if (project == root && PUBLIC_TASK_NAMES.contains(task.getName())) {
+                    task.setGroup(TASK_GROUP);
+                }
+                else if ("publishing".equals(task.getGroup())) {
+                    task.setGroup(null);
+                }
+            });
+        }
     }
 
     private static void configurePublicationProject(
@@ -424,7 +437,6 @@ public class PublishPlugin implements Plugin<Project> {
         String description
     ) {
         return root.getTasks().register(taskName, GradleBuild.class, task -> {
-            task.setGroup("publishing");
             task.setDescription(description);
             task.setDir(nested.getDirectory().get().getAsFile());
             task.setTasks(Collections.singletonList(requestedTask));
@@ -477,27 +489,6 @@ public class PublishPlugin implements Plugin<Project> {
         prepareRelease.configure(task -> {
             task.getDestinationDirectory().set(bundle.getParentFile());
             task.getArchiveFileName().set(bundle.getName());
-        });
-    }
-
-    private static void registerAliases(
-        Project project,
-        TaskProvider<PrepareRepositoryTask> prepareSnapshot,
-        TaskProvider<Zip> prepareRelease,
-        TaskProvider<UploadToCentralTask> uploadRelease
-    ) {
-        alias(project, "prepareSnapshotDeploy", prepareSnapshot, "Alias for prepareSnapshot.");
-        alias(project, "prepareReleaseDeploy", prepareRelease, "Alias for prepareRelease.");
-        alias(project, "publishTestRelease", prepareRelease, "Alias for prepareRelease.");
-        alias(project, "zipStagingDeploy", prepareRelease, "Alias for prepareRelease.");
-        alias(project, "uploadToMavenCentral", uploadRelease, "Alias for uploadReleaseToMavenCentral.");
-    }
-
-    private static void alias(Project project, String name, TaskProvider<? extends Task> target, String description) {
-        project.getTasks().register(name, task -> {
-            task.setGroup("publishing");
-            task.setDescription(description);
-            task.dependsOn(target);
         });
     }
 

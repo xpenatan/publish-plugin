@@ -20,10 +20,16 @@ group = providers.gradleProperty("group").get()
 val requestedTaskNames = gradle.startParameter.taskNames.map { it.substringAfterLast(':') }.toSet()
 fun isTaskRequested(vararg names: String) = names.any(requestedTaskNames::contains)
 
-val prepareSnapshotRequested = isTaskRequested("prepareSnapshot", "prepareSnapshotDeploy")
+val publishPluginTaskGroup = "publish-plugin"
+val publicPublishPluginTasks = setOf(
+    "prepareSnapshot",
+    "prepareRelease",
+    "publishSnapshot",
+    "publishRelease"
+)
+val prepareSnapshotRequested = isTaskRequested("prepareSnapshot")
 val releaseRequested = isTaskRequested(
     "prepareRelease",
-    "prepareReleaseDeploy",
     "publishRelease",
     "uploadToMavenCentral"
 ) || providers.gradleProperty("release").map(String::toBoolean).getOrElse(false)
@@ -152,19 +158,19 @@ sonatypePublishTasks.configureEach {
 }
 
 tasks.register("prepareSnapshot") {
-    group = "publishing"
+    group = publishPluginTaskGroup
     description = "Prepares the plugin snapshot in build/snapshot-deploy without uploading it."
     dependsOn(sonatypePublishTasks)
 }
 
 tasks.register("publishSnapshot") {
-    group = "publishing"
+    group = publishPluginTaskGroup
     description = "Publishes the plugin and its marker to the Sonatype snapshot repository."
     dependsOn(sonatypePublishTasks)
 }
 
 val prepareRelease = tasks.register<Zip>("prepareRelease") {
-    group = "publishing"
+    group = publishPluginTaskGroup
     description = "Prepares a Maven Central release bundle without uploading it."
     dependsOn(sonatypePublishTasks)
     from(releaseDeployDirectory)
@@ -173,7 +179,6 @@ val prepareRelease = tasks.register<Zip>("prepareRelease") {
 }
 
 val uploadToMavenCentral = tasks.register("uploadToMavenCentral") {
-    group = "publishing"
     description = "Uploads the prepared release bundle to the Sonatype Central Portal."
     dependsOn(prepareRelease)
     inputs.file(releaseBundle)
@@ -231,19 +236,16 @@ val uploadToMavenCentral = tasks.register("uploadToMavenCentral") {
 }
 
 tasks.register("publishRelease") {
-    group = "publishing"
+    group = publishPluginTaskGroup
     description = "Prepares and uploads a signed release to the Sonatype Central Portal."
     dependsOn(uploadToMavenCentral)
 }
 
-tasks.register("prepareSnapshotDeploy") {
-    group = "publishing"
-    description = "Alias for prepareSnapshot."
-    dependsOn("prepareSnapshot")
-}
-
-tasks.register("prepareReleaseDeploy") {
-    group = "publishing"
-    description = "Alias for prepareRelease."
-    dependsOn(prepareRelease)
+gradle.projectsEvaluated {
+    tasks.configureEach {
+        when {
+            name in publicPublishPluginTasks -> group = publishPluginTaskGroup
+            group == "publishing" -> group = null
+        }
+    }
 }
