@@ -65,6 +65,44 @@ class EasyPublishingPluginFunctionalTest {
     }
 
     @Test
+    void requiresPublishingGroupId() throws IOException {
+        Files.writeString(new File(projectDir, "settings.gradle").toPath(), "rootProject.name = 'sample'\n");
+        Files.writeString(new File(projectDir, "build.gradle").toPath(), """
+            plugins {
+                id 'java-library'
+                id 'com.github.xpenatan.easy-publishing'
+            }
+
+            easyPublishing {
+                version = '-SNAPSHOT'
+            }
+            """);
+
+        BuildResult result = runner("tasks").buildAndFail();
+
+        assertTrue(result.getOutput().contains("easyPublishing.groupId must be configured"));
+    }
+
+    @Test
+    void requiresPublishingVersion() throws IOException {
+        Files.writeString(new File(projectDir, "settings.gradle").toPath(), "rootProject.name = 'sample'\n");
+        Files.writeString(new File(projectDir, "build.gradle").toPath(), """
+            plugins {
+                id 'java-library'
+                id 'com.github.xpenatan.easy-publishing'
+            }
+
+            easyPublishing {
+                groupId = 'com.example'
+            }
+            """);
+
+        BuildResult result = runner("tasks").buildAndFail();
+
+        assertTrue(result.getOutput().contains("easyPublishing.version must be configured"));
+    }
+
+    @Test
     void preparesSnapshotRepositoryAndPom() throws IOException {
         writeProject("1.2.3-SNAPSHOT");
 
@@ -261,6 +299,8 @@ class EasyPublishingPluginFunctionalTest {
 
             easyPublishing {
                 modules ':library'
+                groupId = 'com.example.multi'
+                version = rootProject.ext['easyPublishing.releaseRequested'] ? '2.0.0' : '2.0.0-SNAPSHOT'
                 pomName = 'Selected Library'
             }
             """);
@@ -270,9 +310,6 @@ class EasyPublishingPluginFunctionalTest {
             plugins {
                 id 'java-library'
             }
-
-            group = 'com.example.multi'
-            version = rootProject.ext['easyPublishing.releaseRequested'] ? '2.0.0' : '2.0.0-SNAPSHOT'
 
             publishing {
                 publications {
@@ -315,6 +352,8 @@ class EasyPublishingPluginFunctionalTest {
             }
 
             easyPublishing {
+                groupId = 'com.example.outer'
+                version = rootProject.ext['easyPublishing.releaseRequested'] ? '1.0.0' : '1.0.0-SNAPSHOT'
                 releaseRepositoryUrl = layout.projectDirectory.dir('direct-release-repository')
                     .asFile.toURI().toString()
                 nestedBuild('tool') {
@@ -391,12 +430,12 @@ class EasyPublishingPluginFunctionalTest {
                 id("com.github.xpenatan.easy-publishing")
             }
 
-            group = "com.example.kotlin"
-            version = "3.0.0-SNAPSHOT"
             val publishingModules = listOf(":")
 
             easyPublishing {
                 modules(publishingModules)
+                groupId.set("com.example.kotlin")
+                version.set("3.0.0-SNAPSHOT")
                 pomName.set("Kotlin DSL Library")
                 pomDescription.set("Configured from Kotlin DSL")
                 projectUrl.set("https://github.com/example/kotlin-lib")
@@ -429,9 +468,7 @@ class EasyPublishingPluginFunctionalTest {
                 id("com.github.xpenatan.easy-publishing")
             }
 
-            group = "com.example"
             val releaseRequested = extra["easyPublishing.releaseRequested"] as Boolean
-            version = if (releaseRequested) "1.0.0" else "1.0.0-SNAPSHOT"
 
             gradlePlugin {
                 plugins {
@@ -443,6 +480,8 @@ class EasyPublishingPluginFunctionalTest {
             }
 
             easyPublishing {
+                groupId.set("com.example")
+                version.set(if (releaseRequested) "1.0.0" else "1.0.0-SNAPSHOT")
                 pomName.set("Sample Gradle plugin")
                 releaseRepositoryUrl.set(
                     layout.projectDirectory.dir("remote-releases").asFile.toURI().toString()
@@ -520,10 +559,9 @@ class EasyPublishingPluginFunctionalTest {
                 id 'com.github.xpenatan.easy-publishing'
             }
 
-            group = 'com.example'
-            version = '%s'
-
             easyPublishing {
+                groupId = 'com.example'
+                version = '%s'
                 pomName = 'Sample Library'
                 pomDescription = 'A functional-test library'
                 projectUrl = 'https://github.com/example/sample'

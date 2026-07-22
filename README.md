@@ -26,13 +26,11 @@ plugins {
 val releaseRequested = rootProject.extra["easyPublishing.releaseRequested"] as Boolean
 val libraryVersion = "1.0.0"
 
-allprojects {
-    group = "com.example.library"
-    version = if(releaseRequested) libraryVersion else "$libraryVersion-SNAPSHOT"
-}
-
 easyPublishing {
     modules(":core", ":desktop")
+
+    groupId.set("com.example.library")
+    version.set(if(releaseRequested) libraryVersion else "$libraryVersion-SNAPSHOT")
 
     snapshotRepositoryUrl.set("https://central.sonatype.com/repository/maven-snapshots/")
     releaseRepositoryUrl.set("https://central.sonatype.com")
@@ -56,6 +54,20 @@ easyPublishing {
 
 `modules` accepts either project paths directly or an existing list. Dynamic builds can use
 `modules(publishingModules)` without Kotlin spread or array conversion syntax.
+EasyPublishing assigns `groupId` and `version` to the selected projects; no root
+`allprojects` coordinate block is needed.
+
+`version` is the exact publication version. Both snapshot forms are supported:
+
+```kotlin
+version.set("-SNAPSHOT")
+// or
+version.set("1.2.3-SNAPSHOT")
+```
+
+Use a non-snapshot value such as `version.set("1.2.3")` for a release. The example above
+switches automatically based on whether a snapshot or release task was requested. Replace
+`"$libraryVersion-SNAPSHOT"` with `"-SNAPSHOT"` there to use the literal snapshot form.
 
 For a single-project build, omit `modules`; the root project is selected automatically.
 
@@ -106,6 +118,8 @@ The same settings can be supplied on the command line or in `gradle.properties`,
 especially useful for nested builds:
 
 ```properties
+easyPublishing.groupId=com.example.library
+easyPublishing.version=1.2.3-SNAPSHOT
 easyPublishing.snapshotRepositoryUrl=https://packages.example.com/maven/snapshots
 easyPublishing.releaseRepositoryUrl=https://packages.example.com/maven/releases
 easyPublishing.usernameEnvironmentVariable=MAVEN_REPOSITORY_USERNAME

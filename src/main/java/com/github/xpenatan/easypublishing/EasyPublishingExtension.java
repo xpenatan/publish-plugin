@@ -25,6 +25,12 @@ public abstract class EasyPublishingExtension {
         );
 
         getPomName().convention(project.provider(project::getName));
+        getGroupId().convention(
+            project.getProviders().gradleProperty("easyPublishing.groupId").orElse("")
+        );
+        getVersion().convention(
+            project.getProviders().gradleProperty("easyPublishing.version").orElse("")
+        );
         getPomDescription().convention(project.provider(() -> {
             String description = project.getDescription();
             return description == null ? project.getName() : description;
@@ -74,7 +80,7 @@ public abstract class EasyPublishingExtension {
         getReleaseDirectory().convention(project.getLayout().getBuildDirectory().dir("staging-deploy"));
         getReleaseBundle().convention(project.getLayout().getBuildDirectory().file("staging-deploy.zip"));
         getDeploymentName().convention(project.provider(
-            () -> getPomName().get() + "-" + project.getVersion()
+            () -> getPomName().get() + "-" + getVersion().get()
         ));
     }
 
@@ -101,6 +107,12 @@ public abstract class EasyPublishingExtension {
     }
 
     public abstract Property<String> getPomName();
+
+    /** Required Maven group ID assigned to every selected publication project. */
+    public abstract Property<String> getGroupId();
+
+    /** Required publication version assigned to every selected publication project. */
+    public abstract Property<String> getVersion();
 
     public abstract Property<String> getPomDescription();
 

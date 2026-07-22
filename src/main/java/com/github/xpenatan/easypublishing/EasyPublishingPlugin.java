@@ -39,6 +39,8 @@ public class EasyPublishingPlugin implements Plugin<Project> {
     private static final String RELEASE_REPOSITORY_NAME = "easyPublishingRelease";
     private static final String PUBLISH_TASK_SUFFIX = "ToEasyPublishingRepository";
     private static final String RELEASE_PUBLISH_TASK_SUFFIX = "ToEasyPublishingReleaseRepository";
+    private static final String GROUP_ID_PROPERTY = "easyPublishing.groupId";
+    private static final String VERSION_PROPERTY = "easyPublishing.version";
     private static final String SNAPSHOT_REPOSITORY_URL_PROPERTY = "easyPublishing.snapshotRepositoryUrl";
     private static final String RELEASE_REPOSITORY_URL_PROPERTY = "easyPublishing.releaseRepositoryUrl";
     private static final String USERNAME_ENVIRONMENT_PROPERTY =
@@ -185,7 +187,17 @@ public class EasyPublishingPlugin implements Plugin<Project> {
                 });
             }
             Set<Project> publicationProjects = resolvePublicationProjects(project, extension);
+            String groupId = requireConfigured(
+                extension.getGroupId().getOrElse(""),
+                "easyPublishing.groupId must be configured"
+            );
+            String publicationVersion = requireConfigured(
+                extension.getVersion().getOrElse(""),
+                "easyPublishing.version must be configured"
+            );
             for (Project publicationProject : publicationProjects) {
+                publicationProject.setGroup(groupId);
+                publicationProject.setVersion(publicationVersion);
                 if (publicationProject == project || publicationProject.getState().getExecuted()) {
                     publicationProject.getPluginManager().apply("maven-publish");
                     publicationProject.getPluginManager().apply("signing");
@@ -496,6 +508,12 @@ public class EasyPublishingPlugin implements Plugin<Project> {
                 nested.getPublishSnapshotTask().get(),
                 "Publishes snapshot artifacts from nested build '" + nested.getName() + "'."
             );
+            nestedSnapshot.configure(task ->
+                configureNestedCoordinateProperties(task, extension)
+            );
+            nestedRelease.configure(task ->
+                configureNestedCoordinateProperties(task, extension)
+            );
             nestedPublishSnapshot.configure(task ->
                 configureNestedSnapshotProperties(task, extension)
             );
@@ -530,6 +548,7 @@ public class EasyPublishingPlugin implements Plugin<Project> {
         EasyPublishingExtension extension
     ) {
         var properties = new java.util.LinkedHashMap<>(task.getStartParameter().getProjectProperties());
+        addNestedCoordinateProperties(properties, extension);
         properties.put(SNAPSHOT_REPOSITORY_URL_PROPERTY, extension.getSnapshotRepositoryUrl().getOrElse(""));
         addNestedCredentialProperties(properties, extension);
         task.getStartParameter().setProjectProperties(properties);
@@ -540,9 +559,27 @@ public class EasyPublishingPlugin implements Plugin<Project> {
         EasyPublishingExtension extension
     ) {
         var properties = new java.util.LinkedHashMap<>(task.getStartParameter().getProjectProperties());
+        addNestedCoordinateProperties(properties, extension);
         properties.put(RELEASE_REPOSITORY_URL_PROPERTY, extension.getReleaseRepositoryUrl().getOrElse(""));
         addNestedCredentialProperties(properties, extension);
         task.getStartParameter().setProjectProperties(properties);
+    }
+
+    private static void configureNestedCoordinateProperties(
+        GradleBuild task,
+        EasyPublishingExtension extension
+    ) {
+        var properties = new java.util.LinkedHashMap<>(task.getStartParameter().getProjectProperties());
+        addNestedCoordinateProperties(properties, extension);
+        task.getStartParameter().setProjectProperties(properties);
+    }
+
+    private static void addNestedCoordinateProperties(
+        java.util.Map<String, String> properties,
+        EasyPublishingExtension extension
+    ) {
+        properties.put(GROUP_ID_PROPERTY, extension.getGroupId().getOrElse(""));
+        properties.put(VERSION_PROPERTY, extension.getVersion().getOrElse(""));
     }
 
     private static void addNestedCredentialProperties(
