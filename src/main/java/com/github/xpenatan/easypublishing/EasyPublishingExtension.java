@@ -28,8 +28,11 @@ public abstract class EasyPublishingExtension {
         getGroupId().convention(
             project.getProviders().gradleProperty("easyPublishing.groupId").orElse("")
         );
-        getVersion().convention(
-            project.getProviders().gradleProperty("easyPublishing.version").orElse("")
+        getReleaseVersion().convention(
+            project.getProviders().gradleProperty("easyPublishing.releaseVersion").orElse("")
+        );
+        getSnapshotVersion().convention(
+            project.getProviders().gradleProperty("easyPublishing.snapshotVersion").orElse("")
         );
         getPomDescription().convention(project.provider(() -> {
             String description = project.getDescription();
@@ -68,7 +71,7 @@ public abstract class EasyPublishingExtension {
         getReleaseDirectory().convention(project.getLayout().getBuildDirectory().dir("staging-deploy"));
         getReleaseBundle().convention(project.getLayout().getBuildDirectory().file("staging-deploy.zip"));
         getDeploymentName().convention(project.provider(
-            () -> getPomName().get() + "-" + getVersion().get()
+            () -> getPomName().get() + "-" + getReleaseVersion().get()
         ));
     }
 
@@ -99,8 +102,11 @@ public abstract class EasyPublishingExtension {
     /** Required Maven group ID assigned to every selected publication project. */
     public abstract Property<String> getGroupId();
 
-    /** Required publication version assigned to every selected publication project. */
-    public abstract Property<String> getVersion();
+    /** Required release version. Must not end with {@code -SNAPSHOT}. */
+    public abstract Property<String> getReleaseVersion();
+
+    /** Required snapshot version. Supports {@code -SNAPSHOT} and {@code <version>-SNAPSHOT}. */
+    public abstract Property<String> getSnapshotVersion();
 
     public abstract Property<String> getPomDescription();
 

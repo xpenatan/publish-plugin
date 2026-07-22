@@ -23,14 +23,14 @@ plugins {
     id("com.github.xpenatan.easy-publishing") version "-SNAPSHOT"
 }
 
-val releaseRequested = rootProject.extra["easyPublishing.releaseRequested"] as Boolean
 val libraryVersion = "1.0.0"
 
 easyPublishing {
     modules(":core", ":desktop")
 
     groupId.set("com.example.library")
-    version.set(if(releaseRequested) libraryVersion else "$libraryVersion-SNAPSHOT")
+    releaseVersion.set(libraryVersion)
+    snapshotVersion.set("$libraryVersion-SNAPSHOT")
 
     snapshotRepositoryUrl.set("https://central.sonatype.com/repository/maven-snapshots/")
     releaseRepositoryUrl.set("https://central.sonatype.com")
@@ -54,20 +54,23 @@ easyPublishing {
 
 `modules` accepts either project paths directly or an existing list. Dynamic builds can use
 `modules(publishingModules)` without Kotlin spread or array conversion syntax.
-EasyPublishing assigns `groupId` and `version` to the selected projects; no root
+EasyPublishing assigns `groupId` and the selected lifecycle version to the selected projects; no root
 `allprojects` coordinate block is needed.
 
-`version` is the exact publication version. Both snapshot forms are supported:
+`releaseVersion` is always the release version and must not end with `-SNAPSHOT`.
+`snapshotVersion` is always the snapshot version. Both snapshot forms are supported:
 
 ```kotlin
-version.set("-SNAPSHOT")
+releaseVersion.set("1.2.3")
+snapshotVersion.set("-SNAPSHOT")
 // or
-version.set("1.2.3-SNAPSHOT")
+snapshotVersion.set("1.2.3-SNAPSHOT")
 ```
 
-Use a non-snapshot value such as `version.set("1.2.3")` for a release. The example above
-switches automatically based on whether a snapshot or release task was requested. Replace
-`"$libraryVersion-SNAPSHOT"` with `"-SNAPSHOT"` there to use the literal snapshot form.
+EasyPublishing selects `snapshotVersion` for snapshot tasks and `releaseVersion` for release tasks, so
+build scripts do not need conditional version logic. Requesting snapshot and release publishing
+tasks together in one Gradle invocation is rejected because one project cannot have both versions
+at once.
 
 For a single-project build, omit `modules`; the root project is selected automatically.
 
@@ -134,7 +137,8 @@ Repository coordinates and URLs also have `easyPublishing.*` Gradle-property con
 
 ```properties
 easyPublishing.groupId=com.example.library
-easyPublishing.version=1.2.3-SNAPSHOT
+easyPublishing.releaseVersion=1.2.3
+easyPublishing.snapshotVersion=1.2.3-SNAPSHOT
 easyPublishing.snapshotRepositoryUrl=https://packages.example.com/maven/snapshots
 easyPublishing.releaseRepositoryUrl=https://packages.example.com/maven/releases
 ```

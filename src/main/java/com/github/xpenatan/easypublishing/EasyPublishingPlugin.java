@@ -40,7 +40,8 @@ public class EasyPublishingPlugin implements Plugin<Project> {
     private static final String PUBLISH_TASK_SUFFIX = "ToEasyPublishingRepository";
     private static final String RELEASE_PUBLISH_TASK_SUFFIX = "ToEasyPublishingReleaseRepository";
     private static final String GROUP_ID_PROPERTY = "easyPublishing.groupId";
-    private static final String VERSION_PROPERTY = "easyPublishing.version";
+    private static final String RELEASE_VERSION_PROPERTY = "easyPublishing.releaseVersion";
+    private static final String SNAPSHOT_VERSION_PROPERTY = "easyPublishing.snapshotVersion";
     private static final String SNAPSHOT_REPOSITORY_URL_PROPERTY = "easyPublishing.snapshotRepositoryUrl";
     private static final String RELEASE_REPOSITORY_URL_PROPERTY = "easyPublishing.releaseRepositoryUrl";
     private static final String ALLOW_INSECURE_PROTOCOL_PROPERTY =
@@ -61,11 +62,17 @@ public class EasyPublishingPlugin implements Plugin<Project> {
         boolean releaseRequested = isReleaseRequested(project);
         boolean localSnapshotRequested = isAnyTaskRequested(project, "prepareSnapshot");
         boolean publishSnapshotRequested = isAnyTaskRequested(project, "publishSnapshot");
+        boolean snapshotRequested = localSnapshotRequested || publishSnapshotRequested;
         boolean publishReleaseRequested = isAnyTaskRequested(
             project,
             "publishRelease",
             "uploadReleaseToMavenCentral"
         );
+        if (releaseRequested && snapshotRequested) {
+            throw new GradleException(
+                "Snapshot and release publishing tasks cannot be requested in the same Gradle invocation"
+            );
+        }
         project.getExtensions().getExtraProperties().set(RELEASE_REQUESTED_EXTRA, releaseRequested);
 
         EasyPublishingExtension extension = project.getExtensions().create(
@@ -183,10 +190,15 @@ public class EasyPublishingPlugin implements Plugin<Project> {
                 extension.getGroupId().getOrElse(""),
                 "easyPublishing.groupId must be configured"
             );
-            String publicationVersion = requireConfigured(
-                extension.getVersion().getOrElse(""),
-                "easyPublishing.version must be configured"
+            String releaseVersion = requireReleaseVersion(
+                extension.getReleaseVersion().getOrElse(""),
+                "easyPublishing.releaseVersion must be configured"
             );
+            String snapshotVersion = requireSnapshotVersion(
+                extension.getSnapshotVersion().getOrElse(""),
+                "easyPublishing.snapshotVersion must be configured"
+            );
+            String publicationVersion = releaseRequested ? releaseVersion : snapshotVersion;
             for (Project publicationProject : publicationProjects) {
                 publicationProject.setGroup(groupId);
                 publicationProject.setVersion(publicationVersion);
@@ -257,7 +269,7 @@ public class EasyPublishingPlugin implements Plugin<Project> {
         project.getPluginManager().apply("signing");
     }
 
-    /** Can be used by version logic before publications are configured. */
+    /** Exposes the selected publishing lifecycle before publications are configured. */
     public static boolean isReleaseRequested(Project project) {
         String property = stringProperty(project, "easyPublishing.release");
         return Boolean.parseBoolean(property) || isAnyTaskRequested(
@@ -569,7 +581,8 @@ public class EasyPublishingPlugin implements Plugin<Project> {
         EasyPublishingExtension extension
     ) {
         properties.put(GROUP_ID_PROPERTY, extension.getGroupId().getOrElse(""));
-        properties.put(VERSION_PROPERTY, extension.getVersion().getOrElse(""));
+        properties.put(RELEASE_VERSION_PROPERTY, extension.getReleaseVersion().getOrElse(""));
+        properties.put(SNAPSHOT_VERSION_PROPERTY, extension.getSnapshotVersion().getOrElse(""));
     }
 
     private static void addNestedRepositoryProperties(
@@ -691,6 +704,26 @@ public class EasyPublishingPlugin implements Plugin<Project> {
             throw new GradleException(message);
         }
         return value;
+    }
+
+    private static String requireReleaseVersion(String value, String missingMessage) {
+        String version = requireConfigured(value, missingMessage);
+        if (version.endsWith("-SNAPSHOT")) {
+            throw new GradleException(
+                "easyPublishing.releaseVersion must not end with -SNAPSHOT"
+            );
+        }
+        return version;
+    }
+
+    private static String requireSnapshotVersion(String value, String missingMessage) {
+        String version = requireConfigured(value, missingMessage);
+        if (!version.endsWith("-SNAPSHOT")) {
+            throw new GradleException(
+                "easyPublishing.snapshotVersion must end with -SNAPSHOT"
+            );
+        }
+        return version;
     }
 
     private static void setIfNotBlank(org.gradle.api.provider.Property<String> property, String value) {

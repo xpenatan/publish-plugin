@@ -25,7 +25,7 @@ class EasyPublishingPluginFunctionalTest {
 
     @Test
     void exposesOnlyFourEasyPublishingTasks() throws IOException {
-        writeProject("-SNAPSHOT");
+        writeProject("1.2.3", "-SNAPSHOT");
         Files.writeString(
             new File(projectDir, "settings.gradle").toPath(),
             "rootProject.name = 'sample-lib'\ninclude 'unmanaged-publication'\n"
@@ -74,7 +74,8 @@ class EasyPublishingPluginFunctionalTest {
             }
 
             easyPublishing {
-                version = '-SNAPSHOT'
+                releaseVersion = '1.2.3'
+                snapshotVersion = '-SNAPSHOT'
             }
             """);
 
@@ -84,7 +85,7 @@ class EasyPublishingPluginFunctionalTest {
     }
 
     @Test
-    void requiresPublishingVersion() throws IOException {
+    void requiresPublishingReleaseVersion() throws IOException {
         Files.writeString(new File(projectDir, "settings.gradle").toPath(), "rootProject.name = 'sample'\n");
         Files.writeString(new File(projectDir, "build.gradle").toPath(), """
             plugins {
@@ -94,17 +95,38 @@ class EasyPublishingPluginFunctionalTest {
 
             easyPublishing {
                 groupId = 'com.example'
+                snapshotVersion = '-SNAPSHOT'
             }
             """);
 
         BuildResult result = runner("tasks").buildAndFail();
 
-        assertTrue(result.getOutput().contains("easyPublishing.version must be configured"));
+        assertTrue(result.getOutput().contains("easyPublishing.releaseVersion must be configured"));
+    }
+
+    @Test
+    void requiresPublishingSnapshotVersion() throws IOException {
+        Files.writeString(new File(projectDir, "settings.gradle").toPath(), "rootProject.name = 'sample'\n");
+        Files.writeString(new File(projectDir, "build.gradle").toPath(), """
+            plugins {
+                id 'java-library'
+                id 'com.github.xpenatan.easy-publishing'
+            }
+
+            easyPublishing {
+                groupId = 'com.example'
+                releaseVersion = '1.2.3'
+            }
+            """);
+
+        BuildResult result = runner("tasks").buildAndFail();
+
+        assertTrue(result.getOutput().contains("easyPublishing.snapshotVersion must be configured"));
     }
 
     @Test
     void preparesSnapshotRepositoryAndPom() throws IOException {
-        writeProject("1.2.3-SNAPSHOT");
+        writeProject("1.2.3", "1.2.3-SNAPSHOT");
 
         BuildResult result = runner("prepareSnapshot").build();
 
@@ -129,7 +151,7 @@ class EasyPublishingPluginFunctionalTest {
 
     @Test
     void preparesLiteralSnapshotVersion() throws IOException {
-        writeProject("-SNAPSHOT");
+        writeProject("1.2.3", "-SNAPSHOT");
 
         BuildResult result = runner("prepareSnapshot").build();
 
@@ -145,7 +167,7 @@ class EasyPublishingPluginFunctionalTest {
 
     @Test
     void preparesReleaseRepositoryWithoutCreatingBundle() throws IOException {
-        writeProject("1.2.3");
+        writeProject("1.2.3", "1.2.3-SNAPSHOT");
 
         BuildResult result = runner("prepareRelease").build();
 
@@ -164,7 +186,7 @@ class EasyPublishingPluginFunctionalTest {
 
     @Test
     void publishesSnapshotToConfiguredMavenRepository() throws IOException {
-        writeProject("1.2.3-SNAPSHOT");
+        writeProject("1.2.3", "1.2.3-SNAPSHOT");
         Files.writeString(
             new File(projectDir, "build.gradle").toPath(),
             """
@@ -196,7 +218,7 @@ class EasyPublishingPluginFunctionalTest {
 
     @Test
     void rejectsSnapshotPublishingWithoutRepository() throws IOException {
-        writeProject("1.2.3-SNAPSHOT");
+        writeProject("1.2.3", "1.2.3-SNAPSHOT");
 
         BuildResult result = runner("publishSnapshot").buildAndFail();
 
@@ -207,7 +229,7 @@ class EasyPublishingPluginFunctionalTest {
 
     @Test
     void publishesReleaseToConfiguredMavenRepository() throws IOException {
-        writeProject("1.2.3");
+        writeProject("1.2.3", "1.2.3-SNAPSHOT");
         Files.writeString(
             new File(projectDir, "build.gradle").toPath(),
             """
@@ -249,7 +271,7 @@ class EasyPublishingPluginFunctionalTest {
 
     @Test
     void rejectsReleasePublishingWithoutProvider() throws IOException {
-        writeProject("1.2.3");
+        writeProject("1.2.3", "1.2.3-SNAPSHOT");
 
         BuildResult result = runner("publishRelease", "--dry-run").buildAndFail();
 
@@ -260,7 +282,7 @@ class EasyPublishingPluginFunctionalTest {
 
     @Test
     void usesExplicitlyConfiguredCentralPortal() throws IOException {
-        writeProject("1.2.3");
+        writeProject("1.2.3", "1.2.3-SNAPSHOT");
         Files.writeString(
             new File(projectDir, "build.gradle").toPath(),
             """
@@ -286,7 +308,7 @@ class EasyPublishingPluginFunctionalTest {
 
     @Test
     void requiresDirectSigningValuesForCentralPortalUpload() throws IOException {
-        writeProject("1.2.3");
+        writeProject("1.2.3", "1.2.3-SNAPSHOT");
         Files.writeString(
             new File(projectDir, "build.gradle").toPath(),
             """
@@ -309,14 +331,58 @@ class EasyPublishingPluginFunctionalTest {
     }
 
     @Test
-    void rejectsReleaseVersionForSnapshotPreparation() throws IOException {
-        writeProject("1.2.3");
+    void rejectsSnapshotVersionWithoutSnapshotSuffix() throws IOException {
+        writeProject("1.2.3", "1.2.3-SNAPSHOT");
+        Files.writeString(
+            new File(projectDir, "build.gradle").toPath(),
+            """
+
+            easyPublishing {
+                snapshotVersion = '1.2.3'
+            }
+            """,
+            java.nio.file.StandardOpenOption.APPEND
+        );
 
         BuildResult result = runner("prepareSnapshot").buildAndFail();
 
-        assertTrue(result.getOutput().contains("Cannot prepare snapshot"));
-        assertTrue(result.getOutput().contains("uses release version 1.2.3"));
+        assertTrue(result.getOutput().contains(
+            "easyPublishing.snapshotVersion must end with -SNAPSHOT"
+        ));
         assertFalse(new File(projectDir, "build/snapshot-deploy").exists());
+    }
+
+    @Test
+    void rejectsSnapshotValueAsReleaseVersion() throws IOException {
+        writeProject("1.2.3", "1.2.3-SNAPSHOT");
+        Files.writeString(
+            new File(projectDir, "build.gradle").toPath(),
+            """
+
+            easyPublishing {
+                releaseVersion = '1.2.3-SNAPSHOT'
+            }
+            """,
+            java.nio.file.StandardOpenOption.APPEND
+        );
+
+        BuildResult result = runner("prepareRelease").buildAndFail();
+
+        assertTrue(result.getOutput().contains(
+            "easyPublishing.releaseVersion must not end with -SNAPSHOT"
+        ));
+        assertFalse(new File(projectDir, "build/staging-deploy").exists());
+    }
+
+    @Test
+    void rejectsMixedSnapshotAndReleaseLifecycles() throws IOException {
+        writeProject("1.2.3", "1.2.3-SNAPSHOT");
+
+        BuildResult result = runner("prepareSnapshot", "prepareRelease").buildAndFail();
+
+        assertTrue(result.getOutput().contains(
+            "Snapshot and release publishing tasks cannot be requested in the same Gradle invocation"
+        ));
     }
 
     @Test
@@ -333,7 +399,8 @@ class EasyPublishingPluginFunctionalTest {
             easyPublishing {
                 modules ':library'
                 groupId = 'com.example.multi'
-                version = rootProject.ext['easyPublishing.releaseRequested'] ? '2.0.0' : '2.0.0-SNAPSHOT'
+                releaseVersion = '2.0.0'
+                snapshotVersion = '2.0.0-SNAPSHOT'
                 pomName = 'Selected Library'
             }
             """);
@@ -386,7 +453,8 @@ class EasyPublishingPluginFunctionalTest {
 
             easyPublishing {
                 groupId = 'com.example.outer'
-                version = rootProject.ext['easyPublishing.releaseRequested'] ? '1.0.0' : '1.0.0-SNAPSHOT'
+                releaseVersion = '1.0.0'
+                snapshotVersion = '1.0.0-SNAPSHOT'
                 releaseRepositoryUrl = layout.projectDirectory.dir('direct-release-repository')
                     .asFile.toURI().toString()
                 nestedBuild('tool') {
@@ -470,7 +538,8 @@ class EasyPublishingPluginFunctionalTest {
             easyPublishing {
                 modules(publishingModules)
                 groupId.set("com.example.kotlin")
-                version.set("3.0.0-SNAPSHOT")
+                releaseVersion.set("3.0.0")
+                snapshotVersion.set("3.0.0-SNAPSHOT")
                 pomName.set("Kotlin DSL Library")
                 pomDescription.set("Configured from Kotlin DSL")
                 projectUrl.set("https://github.com/example/kotlin-lib")
@@ -503,8 +572,6 @@ class EasyPublishingPluginFunctionalTest {
                 id("com.github.xpenatan.easy-publishing")
             }
 
-            val releaseRequested = extra["easyPublishing.releaseRequested"] as Boolean
-
             gradlePlugin {
                 plugins {
                     create("sample") {
@@ -516,7 +583,8 @@ class EasyPublishingPluginFunctionalTest {
 
             easyPublishing {
                 groupId.set("com.example")
-                version.set(if (releaseRequested) "1.0.0" else "1.0.0-SNAPSHOT")
+                releaseVersion.set("1.0.0")
+                snapshotVersion.set("1.0.0-SNAPSHOT")
                 pomName.set("Sample Gradle plugin")
                 releaseRepositoryUrl.set(
                     layout.projectDirectory.dir("remote-releases").asFile.toURI().toString()
@@ -588,7 +656,7 @@ class EasyPublishingPluginFunctionalTest {
         return matches == null || matches.length == 0 ? null : matches[0];
     }
 
-    private void writeProject(String version) throws IOException {
+    private void writeProject(String releaseVersion, String snapshotVersion) throws IOException {
         Files.writeString(new File(projectDir, "settings.gradle").toPath(), "rootProject.name = 'sample-lib'\n");
         Files.writeString(new File(projectDir, "build.gradle").toPath(), """
             plugins {
@@ -598,7 +666,8 @@ class EasyPublishingPluginFunctionalTest {
 
             easyPublishing {
                 groupId = 'com.example'
-                version = '%s'
+                releaseVersion = '%s'
+                snapshotVersion = '%s'
                 pomName = 'Sample Library'
                 pomDescription = 'A functional-test library'
                 projectUrl = 'https://github.com/example/sample'
@@ -607,7 +676,7 @@ class EasyPublishingPluginFunctionalTest {
                 scmUrl = 'https://github.com/example/sample'
                 scmConnection = 'scm:git:https://github.com/example/sample.git'
             }
-            """.formatted(version));
+            """.formatted(releaseVersion, snapshotVersion));
 
         File source = new File(projectDir, "src/main/java/com/example/Sample.java");
         Files.createDirectories(source.getParentFile().toPath());
